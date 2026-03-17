@@ -1,0 +1,12 @@
+key,type,encoding,description
+wifi_ssid,namespace,,SpoolSense config namespace
+wifi_ssid,data,string,WiFi network name (max 32 chars)
+wifi_pass,data,string,WiFi password
+mqtt_host,data,string,MQTT broker IP or hostname
+mqtt_port,data,u16,MQTT broker port (default 1883)
+mqtt_user,data,string,MQTT username
+mqtt_pass,data,string,MQTT password
+mqtt_prefix,data,string,MQTT topic prefix (default spoolsense)
+spoolman_on,data,u8,Spoolman enabled (1) or disabled (0)
+spoolman_url,data,string,Spoolman base URL
+auto_mode,data,u8,Automation mode: 0=Self Directed 1=Controlled by HA
