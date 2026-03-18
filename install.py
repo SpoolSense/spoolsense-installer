@@ -123,6 +123,24 @@ def validate_ssid(value):
     return None
 
 
+def validate_host(value):
+    if not value:
+        return "Cannot be empty"
+    # If it looks like an IP (only digits and dots), validate strictly
+    if re.match(r'^[\d.]+$', value):
+        ip_match = re.match(r'^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$', value)
+        if not ip_match:
+            return "Invalid IP address — must be 4 octets (e.g. 192.168.1.100)"
+        octets = [int(ip_match.group(i)) for i in range(1, 5)]
+        if not all(0 <= o <= 255 for o in octets):
+            return "Each IP octet must be 0-255"
+        return None
+    # Valid hostname: letters, digits, hyphens, dots
+    if re.match(r'^[a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?)*$', value):
+        return None
+    return "Must be a valid IP address (e.g. 192.168.1.100) or hostname (e.g. mqtt.local)"
+
+
 def validate_port(value):
     try:
         port = int(value)
@@ -161,7 +179,7 @@ def collect_scanner_config():
 
     wifi_ssid = ask("WiFi SSID", validate=validate_ssid)
     wifi_pass = ask("WiFi Password", password=True, validate=validate_not_empty)
-    mqtt_host = ask("MQTT broker host", validate=validate_not_empty)
+    mqtt_host = ask("MQTT broker host", validate=validate_host)
     mqtt_port = ask("MQTT port", default=1883, validate=validate_port)
     mqtt_user = ask("MQTT username", default="")
     mqtt_pass = ask("MQTT password", password=True, default="")
