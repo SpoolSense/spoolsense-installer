@@ -33,6 +33,20 @@ MIDDLEWARE_DIR = os.path.expanduser("~/SpoolSense")
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# ─── Terminal colors ──────────────────────────────────────────────────────────
+
+class C:
+    """ANSI color codes — degrades gracefully if terminal doesn't support them."""
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+    CYAN = "\033[36m"
+    GREEN = "\033[32m"
+    YELLOW = "\033[33m"
+    RED = "\033[31m"
+    MAGENTA = "\033[35m"
+    BLUE = "\033[34m"
+    RESET = "\033[0m"
+
 # Board definitions: board_key -> (display name, chip type, firmware suffix, flash size min, bootloader offset)
 BOARDS = {
     "esp32dev": ("ESP32-WROOM DevKit (4MB)", "esp32", "esp32dev", 4 * 1024 * 1024, 0x1000),
@@ -57,7 +71,7 @@ def ask(prompt, default=None, password=False, validate=None):
         if validate:
             err = validate(value)
             if err:
-                print(f"  ✗ {err}")
+                print(f"  {C.RED}✗{C.RESET} {err}")
                 continue
 
         return value
@@ -131,7 +145,7 @@ def validate_url(value):
 
 def collect_scanner_config():
     """Collect scanner configuration from user input."""
-    print("\n── Scanner Configuration ──────────────\n")
+    print(f"\n{C.CYAN}── Scanner Configuration ──────────────{C.RESET}\n")
 
     board = ask_choice("Scanner board:", {
         "esp32dev": "ESP32-WROOM DevKit (4MB) — most common",
@@ -181,7 +195,7 @@ def collect_scanner_config():
 
 def collect_middleware_config():
     """Collect middleware configuration from user input."""
-    print("\n── Middleware Configuration ────────────\n")
+    print(f"\n{C.CYAN}── Middleware Configuration ────────────{C.RESET}\n")
 
     mode = ask_choice("Toolhead mode:", {
         "single": "Single toolhead",
@@ -294,7 +308,7 @@ def download_asset(release, suffix):
 
 def detect_usb_port():
     """Auto-detect the ESP32 USB port."""
-    print("\n── Detecting ESP32 ─────────────────────\n")
+    print(f"\n{C.CYAN}── Detecting ESP32 ─────────────────────{C.RESET}\n")
 
     patterns = []
     system = platform.system()
@@ -384,7 +398,7 @@ def verify_flash(port, board_key):
 def flash_firmware(port, board_key, firmware_bin, nvs_bin_path, partitions_bin_path, bootloader_bin_path):
     """Flash bootloader + partition table + NVS config + firmware to the ESP32."""
     print(f"\n  Flashing firmware...")
-    print("  ⚠  Do NOT disconnect the USB cable during flashing!\n")
+    print(f"{C.YELLOW}  ⚠ {C.RESET} Do NOT disconnect the USB cable during flashing!\n")
 
     cmd = ["esptool.py"]
     if port:
@@ -467,7 +481,7 @@ low_spool_threshold: 100
 
 def install_middleware(config_yaml):
     """Clone SpoolSense middleware, install deps, write config, create service."""
-    print("\n── Installing Middleware ────────────────\n")
+    print(f"\n{C.CYAN}── Installing Middleware ────────────────{C.RESET}\n")
 
     # Clone or update
     if os.path.isdir(MIDDLEWARE_DIR):
@@ -496,7 +510,7 @@ def install_middleware(config_yaml):
             return
     with open(config_path, "w") as f:
         f.write(config_yaml)
-    print(f"  ✓ Config written to {config_path}")
+    print(f"  {C.GREEN}✓{C.RESET} Config written to {config_path}")
 
     # Create systemd service
     if platform.system() == "Linux" and shutil.which("systemctl"):
@@ -535,7 +549,7 @@ WantedBy=multi-user.target
         subprocess.run(["sudo", "systemctl", "restart", "spoolsense"], check=True)
         print("  ✓ SpoolSense service started and enabled on boot")
     except subprocess.CalledProcessError:
-        print("  ⚠  Could not create systemd service (requires sudo)")
+        print(f"{C.YELLOW}  ⚠ {C.RESET} Could not create systemd service (requires sudo)")
         print(f"     Manual setup: copy {tmp_path} to {service_path}")
     finally:
         os.unlink(tmp_path)
@@ -544,18 +558,24 @@ WantedBy=multi-user.target
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
-    print("─── How to Install ────────────────────────")
+    print(f"""{C.CYAN}{C.BOLD}
+  ____                    _ ____
+ / ___| _ __   ___   ___ | / ___|  ___ _ __  ___  ___
+ \\___ \\| '_ \\ / _ \\ / _ \\| \\___ \\ / _ \\ '_ \\/ __|/ _ \\
+  ___) | |_) | (_) | (_) | |___) |  __/ | | \\__ \\  __/
+ |____/| .__/ \\___/ \\___/|_|____/ \\___|_| |_|___/\\___|
+       |_|{C.RESET}
+{C.DIM}          NFC Filament Intelligence for 3D Printers{C.RESET}
+    """)
+
+    print(f"  {C.GREEN}RECOMMENDED:{C.RESET} Run from your printer host (Raspberry Pi)")
+    print("  with the ESP32 connected via USB. Installs everything")
+    print("  in one pass.")
     print("")
-    print("RECOMMENDED: Run this installer from your printer host")
-    print("(Raspberry Pi) with the ESP32 connected via USB.")
-    print("This installs everything in one pass.")
+    print(f"  No free USB on the Pi? Flash the scanner from a laptop")
+    print("  (Scanner only), then run again on the Pi (Middleware only).")
     print("")
-    print("If your printer host has no free USB port, you can")
-    print("flash the scanner from a laptop (choose 'Scanner only'),")
-    print("then run this installer again on the Pi to install the")
-    print("middleware (choose 'Middleware only').")
-    print("")
-    print("Note: SpoolSense middleware must run on the printer host.")
+    print(f"  {C.YELLOW}Note:{C.RESET} SpoolSense middleware must run on the printer host.")
     print("")
 
     mode = ask_choice("What do you want to install?", {
@@ -588,14 +608,14 @@ def main():
 
     # ── Scanner install ───────────────────────────────────────────────────────
     if mode in ("both", "scanner"):
-        print("\n── Installing Scanner ──────────────────\n")
+        print(f"\n{C.CYAN}── Installing Scanner ──────────────────{C.RESET}\n")
 
         # Download firmware, bootloader, and partition table
         release = fetch_latest_release()
         board_key = scanner_config["board"]
         _, _, fw_suffix, _, _ = BOARDS[board_key]
         firmware_bin = download_asset(release, fw_suffix)
-        print(f"  ✓ Firmware downloaded ({len(firmware_bin)} bytes)")
+        print(f"  {C.GREEN}✓{C.RESET} Firmware downloaded ({len(firmware_bin)} bytes)")
 
         # Download matching bootloader
         bootloader_name = f"bootloader_{fw_suffix}.bin"
@@ -605,7 +625,7 @@ def main():
                 print(f"  Downloading {bootloader_name}...")
                 with urllib.request.urlopen(asset["browser_download_url"], timeout=30) as resp:
                     bootloader_bin = resp.read()
-                print(f"  ✓ Bootloader downloaded ({len(bootloader_bin)} bytes)")
+                print(f"  {C.GREEN}✓{C.RESET} Bootloader downloaded ({len(bootloader_bin)} bytes)")
                 break
         if bootloader_bin is None:
             print(f"\n  ✗ Bootloader '{bootloader_name}' not found in release.")
@@ -619,7 +639,7 @@ def main():
                 print(f"  Downloading {partitions_name}...")
                 with urllib.request.urlopen(asset["browser_download_url"], timeout=30) as resp:
                     partitions_bin = resp.read()
-                print(f"  ✓ Partition table downloaded ({len(partitions_bin)} bytes)")
+                print(f"  {C.GREEN}✓{C.RESET} Partition table downloaded ({len(partitions_bin)} bytes)")
                 break
         if partitions_bin is None:
             print(f"\n  ✗ Partition table '{partitions_name}' not found in release.")
@@ -660,16 +680,16 @@ def main():
 
     # ── Done ──────────────────────────────────────────────────────────────────
     print("")
-    print("══════════════════════════════════════════")
-    print("  SpoolSense is installed!")
+    print(f"{C.GREEN}══════════════════════════════════════════")
+    print(f"  {C.BOLD}SpoolSense is installed!{C.RESET}{C.GREEN}")
     print("")
     if mode in ("both", "scanner"):
-        print("  Scanner:    http://spoolsense.local")
+        print(f"  Scanner:    {C.CYAN}http://spoolsense.local{C.GREEN}")
     if mode in ("both", "middleware"):
-        print("  Middleware: systemctl status spoolsense")
+        print(f"  Middleware: {C.CYAN}systemctl status spoolsense{C.GREEN}")
     print("")
-    print("  Tap a spool to test.")
-    print("══════════════════════════════════════════")
+    print(f"  Tap a spool to test.{C.RESET}")
+    print(f"{C.GREEN}══════════════════════════════════════════{C.RESET}")
 
 
 if __name__ == "__main__":
