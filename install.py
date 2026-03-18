@@ -272,8 +272,10 @@ def fetch_latest_release():
 
 def download_asset(release, suffix):
     """Download a firmware asset matching the given suffix."""
+    # Match spoolsense_scanner_<suffix>.bin specifically, not partitions or other files
+    target_name = f"spoolsense_scanner_{suffix}.bin"
     for asset in release.get("assets", []):
-        if suffix in asset["name"] and asset["name"].endswith(".bin"):
+        if asset["name"] == target_name:
             url = asset["browser_download_url"]
             print(f"  Downloading {asset['name']}...")
             try:
@@ -379,8 +381,8 @@ def verify_flash(port, board_key):
     return True
 
 
-def flash_firmware(port, board_key, firmware_bin, nvs_bin_path):
-    """Flash firmware + NVS config to the ESP32."""
+def flash_firmware(port, board_key, firmware_bin, nvs_bin_path, partitions_bin_path):
+    """Flash partition table + NVS config + firmware to the ESP32."""
     print(f"\n  Flashing firmware...")
     print("  ⚠  Do NOT disconnect the USB cable during flashing!\n")
 
@@ -391,13 +393,14 @@ def flash_firmware(port, board_key, firmware_bin, nvs_bin_path):
     board_name, chip, _, _ = BOARDS[board_key]
     cmd.extend(["--chip", chip, "write_flash"])
 
-    # Write NVS config partition at 0x9000, firmware at 0x10000
+    # Write partition table at 0x8000, NVS config at 0x9000, firmware at 0x10000
     with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as fw_file:
         fw_file.write(firmware_bin)
         fw_path = fw_file.name
 
     try:
         cmd.extend([
+            "0x8000", partitions_bin_path,
             "0x9000", nvs_bin_path,
             "0x10000", fw_path,
         ])
@@ -586,12 +589,26 @@ def main():
     if mode in ("both", "scanner"):
         print("\n── Installing Scanner ──────────────────\n")
 
-        # Download firmware
+        # Download firmware + partition table
         release = fetch_latest_release()
         board_key = scanner_config["board"]
         _, _, fw_suffix, _ = BOARDS[board_key]
         firmware_bin = download_asset(release, fw_suffix)
         print(f"  ✓ Firmware downloaded ({len(firmware_bin)} bytes)")
+
+        # Download matching partition table
+        partitions_name = f"partitions_{fw_suffix}.bin"
+        partitions_bin = None
+        for asset in release.get("assets", []):
+            if asset["name"] == partitions_name:
+                print(f"  Downloading {partitions_name}...")
+                with urllib.request.urlopen(asset["browser_download_url"], timeout=30) as resp:
+                    partitions_bin = resp.read()
+                print(f"  ✓ Partition table downloaded ({len(partitions_bin)} bytes)")
+                break
+        if partitions_bin is None:
+            print(f"\n  ✗ Partition table '{partitions_name}' not found in release.")
+            sys.exit(1)
 
         # Generate NVS config partition
         print("  Generating NVS config partition...")
@@ -604,12 +621,18 @@ def main():
         port = detect_usb_port()
         verify_flash(port, board_key)
 
+        # Write partitions binary to temp file
+        partitions_bin_path = os.path.join(tempfile.gettempdir(), "spoolsense_partitions.bin")
+        with open(partitions_bin_path, "wb") as f:
+            f.write(partitions_bin)
+
         # Flash
-        flash_firmware(port, board_key, firmware_bin, nvs_bin_path)
+        flash_firmware(port, board_key, firmware_bin, nvs_bin_path, partitions_bin_path)
 
         # Cleanup
-        if os.path.exists(nvs_bin_path):
-            os.unlink(nvs_bin_path)
+        for p in [nvs_bin_path, partitions_bin_path]:
+            if os.path.exists(p):
+                os.unlink(p)
 
     # ── Middleware install ─────────────────────────────────────────────────────
     if mode in ("both", "middleware"):
