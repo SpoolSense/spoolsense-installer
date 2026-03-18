@@ -44,7 +44,7 @@ fi
 
 # Install Python dependencies
 echo "Installing dependencies..."
-pip3 install --quiet --break-system-packages esptool 2>/dev/null || pip3 install --quiet esptool
+pip3 install --quiet --break-system-packages esptool esp-idf-nvs-partition-gen 2>/dev/null || pip3 install --quiet esptool esp-idf-nvs-partition-gen
 
 # Run the installer
 echo ""
