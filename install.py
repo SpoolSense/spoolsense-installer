@@ -33,10 +33,10 @@ MIDDLEWARE_DIR = os.path.expanduser("~/SpoolSense")
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Board definitions: board_key -> (display name, chip type for esptool, firmware suffix, flash size min)
+# Board definitions: board_key -> (display name, chip type, firmware suffix, flash size min, bootloader offset)
 BOARDS = {
-    "esp32dev": ("ESP32-WROOM DevKit (4MB)", "esp32", "esp32dev", 4 * 1024 * 1024),
-    "esp32s3zero": ("ESP32-S3-Zero by Waveshare (4MB)", "esp32s3", "esp32s3zero", 4 * 1024 * 1024),
+    "esp32dev": ("ESP32-WROOM DevKit (4MB)", "esp32", "esp32dev", 4 * 1024 * 1024, 0x1000),
+    "esp32s3zero": ("ESP32-S3-Zero by Waveshare (4MB)", "esp32s3", "esp32s3zero", 4 * 1024 * 1024, 0x0),
 }
 
 
@@ -336,7 +336,7 @@ def detect_usb_port():
 
 def verify_flash(port, board_key):
     """Verify the connected chip matches the selected board and has sufficient flash."""
-    board_name, expected_chip, _, min_flash = BOARDS[board_key]
+    board_name, expected_chip, _, min_flash, _ = BOARDS[board_key]
     print(f"\n  Verifying chip...")
 
     cmd = ["esptool.py"]
@@ -381,8 +381,8 @@ def verify_flash(port, board_key):
     return True
 
 
-def flash_firmware(port, board_key, firmware_bin, nvs_bin_path, partitions_bin_path):
-    """Flash partition table + NVS config + firmware to the ESP32."""
+def flash_firmware(port, board_key, firmware_bin, nvs_bin_path, partitions_bin_path, bootloader_bin_path):
+    """Flash bootloader + partition table + NVS config + firmware to the ESP32."""
     print(f"\n  Flashing firmware...")
     print("  ⚠  Do NOT disconnect the USB cable during flashing!\n")
 
@@ -390,16 +390,17 @@ def flash_firmware(port, board_key, firmware_bin, nvs_bin_path, partitions_bin_p
     if port:
         cmd.extend(["--port", port])
 
-    board_name, chip, _, _ = BOARDS[board_key]
+    board_name, chip, _, _, bootloader_offset = BOARDS[board_key]
     cmd.extend(["--chip", chip, "write_flash"])
 
-    # Write partition table at 0x8000, NVS config at 0x9000, firmware at 0x10000
+    # Write bootloader, partition table, NVS config, and firmware
     with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as fw_file:
         fw_file.write(firmware_bin)
         fw_path = fw_file.name
 
     try:
         cmd.extend([
+            hex(bootloader_offset), bootloader_bin_path,
             "0x8000", partitions_bin_path,
             "0x9000", nvs_bin_path,
             "0x10000", fw_path,
@@ -589,12 +590,26 @@ def main():
     if mode in ("both", "scanner"):
         print("\n── Installing Scanner ──────────────────\n")
 
-        # Download firmware + partition table
+        # Download firmware, bootloader, and partition table
         release = fetch_latest_release()
         board_key = scanner_config["board"]
-        _, _, fw_suffix, _ = BOARDS[board_key]
+        _, _, fw_suffix, _, _ = BOARDS[board_key]
         firmware_bin = download_asset(release, fw_suffix)
         print(f"  ✓ Firmware downloaded ({len(firmware_bin)} bytes)")
+
+        # Download matching bootloader
+        bootloader_name = f"bootloader_{fw_suffix}.bin"
+        bootloader_bin = None
+        for asset in release.get("assets", []):
+            if asset["name"] == bootloader_name:
+                print(f"  Downloading {bootloader_name}...")
+                with urllib.request.urlopen(asset["browser_download_url"], timeout=30) as resp:
+                    bootloader_bin = resp.read()
+                print(f"  ✓ Bootloader downloaded ({len(bootloader_bin)} bytes)")
+                break
+        if bootloader_bin is None:
+            print(f"\n  ✗ Bootloader '{bootloader_name}' not found in release.")
+            sys.exit(1)
 
         # Download matching partition table
         partitions_name = f"partitions_{fw_suffix}.bin"
@@ -621,16 +636,20 @@ def main():
         port = detect_usb_port()
         verify_flash(port, board_key)
 
-        # Write partitions binary to temp file
+        # Write bootloader and partitions binaries to temp files
+        bootloader_bin_path = os.path.join(tempfile.gettempdir(), "spoolsense_bootloader.bin")
+        with open(bootloader_bin_path, "wb") as f:
+            f.write(bootloader_bin)
+
         partitions_bin_path = os.path.join(tempfile.gettempdir(), "spoolsense_partitions.bin")
         with open(partitions_bin_path, "wb") as f:
             f.write(partitions_bin)
 
         # Flash
-        flash_firmware(port, board_key, firmware_bin, nvs_bin_path, partitions_bin_path)
+        flash_firmware(port, board_key, firmware_bin, nvs_bin_path, partitions_bin_path, bootloader_bin_path)
 
         # Cleanup
-        for p in [nvs_bin_path, partitions_bin_path]:
+        for p in [nvs_bin_path, bootloader_bin_path, partitions_bin_path]:
             if os.path.exists(p):
                 os.unlink(p)
 
