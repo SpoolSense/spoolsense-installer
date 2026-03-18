@@ -71,7 +71,7 @@ def ask(prompt, default=None, password=False, validate=None):
         if validate:
             err = validate(value)
             if err:
-                print(f"  {C.RED}✗{C.RESET} {err}")
+                print(f"  {C.RED}✗ {err}{C.RESET}")
                 continue
 
         return value
