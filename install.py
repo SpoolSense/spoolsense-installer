@@ -123,39 +123,83 @@ def validate_ssid(value):
     return None
 
 
+def is_valid_ipv4(value):
+    """Validate an IPv4 address using logic, not regex."""
+    parts = value.split(".")
+    if len(parts) != 4:
+        return False
+    for part in parts:
+        if not part:
+            return False
+        if not part.isdigit():
+            return False
+        if len(part) > 1 and part[0] == "0":
+            return False  # no leading zeros (e.g. 01, 001)
+        num = int(part)
+        if num < 0 or num > 255:
+            return False
+    return True
+
+
+def is_valid_hostname(value):
+    """Validate a hostname (RFC 952/1123)."""
+    if len(value) > 253:
+        return False
+    labels = value.split(".")
+    for label in labels:
+        if not label or len(label) > 63:
+            return False
+        if label[0] == "-" or label[-1] == "-":
+            return False
+        if not all(c.isalnum() or c == "-" for c in label):
+            return False
+    return True
+
+
 def validate_host(value):
+    """Validate a value as an IPv4 address or hostname."""
     if not value:
         return "Cannot be empty"
-    # If it looks like an IP (only digits and dots), validate strictly
-    if re.match(r'^[\d.]+$', value):
-        ip_match = re.match(r'^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$', value)
-        if not ip_match:
-            return "Invalid IP address — must be 4 octets (e.g. 192.168.1.100)"
-        octets = [int(ip_match.group(i)) for i in range(1, 5)]
-        if not all(0 <= o <= 255 for o in octets):
-            return "Each IP octet must be 0-255"
-        return None
-    # Valid hostname: letters, digits, hyphens, dots
-    if re.match(r'^[a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?)*$', value):
+    # If it's all digits and dots, it must be a valid IPv4
+    if all(c.isdigit() or c == "." for c in value):
+        if is_valid_ipv4(value):
+            return None
+        return "Invalid IP address (e.g. 192.168.1.100)"
+    # Otherwise validate as hostname
+    if is_valid_hostname(value):
         return None
     return "Must be a valid IP address (e.g. 192.168.1.100) or hostname (e.g. mqtt.local)"
 
 
 def validate_port(value):
-    try:
-        port = int(value)
-        if 1 <= port <= 65535:
-            return None
-        return "Port must be between 1 and 65535"
-    except ValueError:
+    """Validate a port number."""
+    if not value.isdigit():
         return "Must be a number"
+    port = int(value)
+    if port < 1 or port > 65535:
+        return "Port must be between 1 and 65535"
+    return None
 
 
 def validate_url(value):
+    """Validate an HTTP/HTTPS URL with host validation."""
     if not value:
         return "Cannot be empty"
-    if not re.match(r'^https?://.+', value):
+    if not value.startswith("http://") and not value.startswith("https://"):
         return "Must start with http:// or https://"
+    # Extract host from URL — strip scheme, path, and optional port
+    remainder = value.split("://", 1)[1]
+    host_port = remainder.split("/", 1)[0]
+    host = host_port.rsplit(":", 1)[0] if ":" in host_port else host_port
+    err = validate_host(host)
+    if err:
+        return f"Invalid host in URL: {err}"
+    # Validate port if present
+    if ":" in host_port:
+        port_str = host_port.rsplit(":", 1)[1]
+        port_err = validate_port(port_str)
+        if port_err:
+            return f"Invalid port in URL: {port_err}"
     return None
 
 
