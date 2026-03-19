@@ -458,41 +458,44 @@ def verify_flash(port, board_key):
     return True
 
 
-def setup_spoolman_nfc_field(spoolman_url):
-    """Create the nfc_id extra field in Spoolman if it doesn't already exist."""
-    # Check if field already exists
-    try:
-        req = urllib.request.Request(f"{spoolman_url}/api/v1/field/spool")
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            fields = json.loads(resp.read())
-            for field in fields:
-                if field.get("key") == SPOOLMAN_NFC_FIELD_KEY:
-                    print(f"  {C.GREEN}✓{C.RESET} Spoolman nfc_id field already exists")
-                    return True
-    except Exception as e:
-        print(f"  {C.YELLOW}!{C.RESET} Could not check Spoolman fields: {e}")
-        print(f"    You may need to manually create the nfc_id extra field in Spoolman.")
-        return False
+def setup_spoolman_extra_fields(spoolman_url):
+    """Create extra fields in Spoolman for tag data enrichment."""
+    # Fields to create: (entity_type, key, field_type, display_name)
+    fields = [
+        ("spool", "nfc_id", "text", "NFC Tag ID"),
+        ("spool", "tag_format", "text", "Tag Format"),
+        ("filament", "aspect", "text", "Aspect/Finish"),
+        ("filament", "dry_temp", "text", "Dry Temp (°C)"),
+        ("filament", "dry_time_hours", "text", "Dry Time (hrs)"),
+    ]
 
-    # Create the field
-    try:
-        body = json.dumps({"field_type": "text", "name": "NFC Tag ID"}).encode()
-        req = urllib.request.Request(
-            f"{spoolman_url}/api/v1/field/spool/{SPOOLMAN_NFC_FIELD_KEY}",
-            data=body,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            if resp.status == 200:
-                print(f"  {C.GREEN}✓{C.RESET} Created nfc_id extra field in Spoolman")
-                return True
-    except Exception as e:
-        print(f"  {C.YELLOW}!{C.RESET} Could not create nfc_id field: {e}")
-        print(f"    You may need to manually create it in Spoolman.")
-        return False
+    for entity_type, key, field_type, display_name in fields:
+        # Check if field already exists
+        try:
+            req = urllib.request.Request(f"{spoolman_url}/api/v1/field/{entity_type}")
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                existing = json.loads(resp.read())
+                if any(f.get("key") == key for f in existing):
+                    print(f"  {C.GREEN}✓{C.RESET} {entity_type}.{key} already exists")
+                    continue
+        except Exception as e:
+            print(f"  {C.YELLOW}!{C.RESET} Could not check {entity_type}.{key}: {e}")
+            continue
 
-    return False
+        # Create the field
+        try:
+            body = json.dumps({"field_type": field_type, "name": display_name}).encode()
+            req = urllib.request.Request(
+                f"{spoolman_url}/api/v1/field/{entity_type}/{key}",
+                data=body,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.status == 200:
+                    print(f"  {C.GREEN}✓{C.RESET} Created {entity_type}.{key}")
+        except Exception as e:
+            print(f"  {C.YELLOW}!{C.RESET} Could not create {entity_type}.{key}: {e}")
 
 
 def flash_firmware(port, board_key, firmware_bin, nvs_bin_path, partitions_bin_path, bootloader_bin_path):
@@ -777,9 +780,9 @@ def main():
         # Set up Spoolman nfc_id extra field if Spoolman is enabled
         if scanner_config.get("spoolman_on") and scanner_config.get("spoolman_url"):
             print("")
-            if ask_yesno("Spoolman support requires an nfc_id extra field. Create it now?", default=True):
-                print("  Setting up Spoolman nfc_id field...")
-                setup_spoolman_nfc_field(scanner_config["spoolman_url"])
+            if ask_yesno("Create Spoolman extra fields for tag data? (nfc_id, tag format, aspect, dry temps)", default=True):
+                print("  Setting up Spoolman extra fields...")
+                setup_spoolman_extra_fields(scanner_config["spoolman_url"])
 
     # ── Config only (source builds) ─────────────────────────────────────────
     if mode == "config":
@@ -820,9 +823,9 @@ def main():
         # Spoolman nfc_id field
         if scanner_config.get("spoolman_on") and scanner_config.get("spoolman_url"):
             print("")
-            if ask_yesno("Spoolman support requires an nfc_id extra field. Create it now?", default=True):
-                print("  Setting up Spoolman nfc_id field...")
-                setup_spoolman_nfc_field(scanner_config["spoolman_url"])
+            if ask_yesno("Create Spoolman extra fields for tag data? (nfc_id, tag format, aspect, dry temps)", default=True):
+                print("  Setting up Spoolman extra fields...")
+                setup_spoolman_extra_fields(scanner_config["spoolman_url"])
 
     # ── Middleware install ─────────────────────────────────────────────────────
     if mode in ("both", "middleware"):
