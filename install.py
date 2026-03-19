@@ -28,6 +28,7 @@ import tempfile
 import urllib.request
 
 GITHUB_API = "https://api.github.com/repos/SpoolSense/spoolsense_scanner/releases/latest"
+SPOOLMAN_NFC_FIELD_KEY = "nfc_id"
 MIDDLEWARE_REPO = "https://github.com/SpoolSense/SpoolSense.git"
 MIDDLEWARE_DIR = os.path.expanduser("~/SpoolSense")
 
@@ -457,6 +458,43 @@ def verify_flash(port, board_key):
     return True
 
 
+def setup_spoolman_nfc_field(spoolman_url):
+    """Create the nfc_id extra field in Spoolman if it doesn't already exist."""
+    # Check if field already exists
+    try:
+        req = urllib.request.Request(f"{spoolman_url}/api/v1/field/spool")
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            fields = json.loads(resp.read())
+            for field in fields:
+                if field.get("key") == SPOOLMAN_NFC_FIELD_KEY:
+                    print(f"  {C.GREEN}✓{C.RESET} Spoolman nfc_id field already exists")
+                    return True
+    except Exception as e:
+        print(f"  {C.YELLOW}!{C.RESET} Could not check Spoolman fields: {e}")
+        print(f"    You may need to manually create the nfc_id extra field in Spoolman.")
+        return False
+
+    # Create the field
+    try:
+        body = json.dumps({"field_type": "text", "name": "NFC Tag ID"}).encode()
+        req = urllib.request.Request(
+            f"{spoolman_url}/api/v1/field/spool/{SPOOLMAN_NFC_FIELD_KEY}",
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            if resp.status == 200:
+                print(f"  {C.GREEN}✓{C.RESET} Created nfc_id extra field in Spoolman")
+                return True
+    except Exception as e:
+        print(f"  {C.YELLOW}!{C.RESET} Could not create nfc_id field: {e}")
+        print(f"    You may need to manually create it in Spoolman.")
+        return False
+
+    return False
+
+
 def flash_firmware(port, board_key, firmware_bin, nvs_bin_path, partitions_bin_path, bootloader_bin_path):
     """Flash bootloader + partition table + NVS config + firmware to the ESP32."""
     print(f"\n  Flashing firmware...")
@@ -734,6 +772,13 @@ def main():
         for p in [nvs_bin_path, bootloader_bin_path, partitions_bin_path]:
             if os.path.exists(p):
                 os.unlink(p)
+
+        # Set up Spoolman nfc_id extra field if Spoolman is enabled
+        if scanner_config.get("spoolman_on") and scanner_config.get("spoolman_url"):
+            print("")
+            if ask_yesno("Spoolman support requires an nfc_id extra field. Create it now?", default=True):
+                print("  Setting up Spoolman nfc_id field...")
+                setup_spoolman_nfc_field(scanner_config["spoolman_url"])
 
     # ── Middleware install ─────────────────────────────────────────────────────
     if mode in ("both", "middleware"):
