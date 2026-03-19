@@ -682,13 +682,14 @@ def main():
         "both": "Scanner + Middleware (recommended)",
         "scanner": "Scanner only",
         "middleware": "Middleware only",
+        "config": f"{C.RED}Config only (source builds){C.RESET} — write NVS config for OTA compatibility",
     })
 
     scanner_config = None
     middleware_config = None
 
-    # Collect scanner config (needed for both scanner and middleware MQTT settings)
-    if mode in ("both", "scanner"):
+    # Collect scanner config (needed for scanner, config-only, and middleware MQTT settings)
+    if mode in ("both", "scanner", "config"):
         scanner_config = collect_scanner_config()
 
     if mode in ("both", "middleware"):
@@ -780,6 +781,49 @@ def main():
                 print("  Setting up Spoolman nfc_id field...")
                 setup_spoolman_nfc_field(scanner_config["spoolman_url"])
 
+    # ── Config only (source builds) ─────────────────────────────────────────
+    if mode == "config":
+        print(f"\n{C.CYAN}── Writing NVS Config ──────────────────{C.RESET}\n")
+        print(f"  {C.RED}{C.BOLD}For source builds only!{C.RESET}")
+        print(f"  This writes your settings to NVS so OTA updates preserve your config.\n")
+
+        # Generate NVS binary
+        nvs_csv = generate_nvs_csv(scanner_config)
+        nvs_bin_path = os.path.join(tempfile.gettempdir(), "spoolsense_nvs.bin")
+        generate_nvs_bin(nvs_csv, nvs_bin_path)
+        print(f"  {C.GREEN}✓{C.RESET} NVS config generated")
+
+        # Detect USB and write NVS
+        port = detect_usb_port()
+        board_key = scanner_config["board"]
+        _, chip, _, _, _ = BOARDS[board_key]
+
+        print(f"  Writing NVS config to {port}...")
+        cmd = [
+            sys.executable, "-m", "esptool",
+            "--chip", chip,
+            "--port", port,
+            "write_flash",
+            "0x9000", nvs_bin_path,
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"\n  {C.RED}✗ Failed to write NVS:{C.RESET}")
+            print(result.stderr)
+            sys.exit(1)
+        print(f"  {C.GREEN}✓{C.RESET} NVS config written")
+
+        # Cleanup
+        if os.path.exists(nvs_bin_path):
+            os.unlink(nvs_bin_path)
+
+        # Spoolman nfc_id field
+        if scanner_config.get("spoolman_on") and scanner_config.get("spoolman_url"):
+            print("")
+            if ask_yesno("Spoolman support requires an nfc_id extra field. Create it now?", default=True):
+                print("  Setting up Spoolman nfc_id field...")
+                setup_spoolman_nfc_field(scanner_config["spoolman_url"])
+
     # ── Middleware install ─────────────────────────────────────────────────────
     if mode in ("both", "middleware"):
         config_yaml = generate_middleware_config(scanner_config, middleware_config)
@@ -788,12 +832,18 @@ def main():
     # ── Done ──────────────────────────────────────────────────────────────────
     print("")
     print(f"{C.GREEN}══════════════════════════════════════════")
-    print(f"  {C.BOLD}SpoolSense is installed!{C.RESET}{C.GREEN}")
-    print("")
-    if mode in ("both", "scanner"):
-        print(f"  Scanner:    {C.CYAN}http://spoolsense.local{C.GREEN}")
-    if mode in ("both", "middleware"):
-        print(f"  Middleware: {C.CYAN}systemctl status spoolsense{C.GREEN}")
+    if mode == "config":
+        print(f"  {C.BOLD}NVS config written!{C.RESET}{C.GREEN}")
+        print("")
+        print(f"  Your settings are now stored in NVS.")
+        print(f"  OTA updates will preserve your config.")
+    else:
+        print(f"  {C.BOLD}SpoolSense is installed!{C.RESET}{C.GREEN}")
+        print("")
+        if mode in ("both", "scanner"):
+            print(f"  Scanner:    {C.CYAN}http://spoolsense.local{C.GREEN}")
+        if mode in ("both", "middleware"):
+            print(f"  Middleware: {C.CYAN}systemctl status spoolsense{C.GREEN}")
     print("")
     print(f"  Tap a spool to test.{C.RESET}")
     print(f"{C.GREEN}══════════════════════════════════════════{C.RESET}")
