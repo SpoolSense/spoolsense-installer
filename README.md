@@ -20,7 +20,6 @@ The installer asks a series of questions (WiFi, MQTT, board type, etc.) and then
 2. **Middleware** — Clones SpoolSense, installs Python dependencies, generates `config.yaml`, and creates a systemd service
 3. **Spoolman** — Optionally creates extra fields in Spoolman (`nfc_id`, `tag_format`, `aspect`, `dry_temp`, `dry_time_hours`) needed for full tag data tracking
 
-No PlatformIO or toolchain install required. Just Python 3 and a USB cable.
 
 ## Recommended Setup
 
