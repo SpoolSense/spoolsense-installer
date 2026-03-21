@@ -30,7 +30,7 @@ import urllib.request
 
 GITHUB_API = "https://api.github.com/repos/SpoolSense/spoolsense_scanner/releases/latest"
 SPOOLMAN_NFC_FIELD_KEY = "nfc_id"
-MIDDLEWARE_REPO = "https://github.com/SpoolSense/SpoolSense.git"
+MIDDLEWARE_REPO = "https://github.com/SpoolSense/spoolsense_middleware.git"
 MIDDLEWARE_DIR = os.path.expanduser("~/SpoolSense")
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
