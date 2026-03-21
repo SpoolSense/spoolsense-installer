@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/SpoolSense/spoolsense_scanner/main/docs/spoolsense-logo.png" width="200" alt="SpoolSense">
+</p>
+
 # SpoolSense Installer
 
 Interactive CLI installer for the [SpoolSense](https://github.com/SpoolSense) ecosystem. Sets up both the scanner firmware and the middleware in one pass.
@@ -5,7 +9,7 @@ Interactive CLI installer for the [SpoolSense](https://github.com/SpoolSense) ec
 ## Quick Start
 
 ```bash
-curl -sL https://raw.githubusercontent.com/SpoolSense/spoolsense-installer/main/install.sh | bash
+curl -sL https://raw.githubusercontent.com/SpoolSense/spoolsense-installer/main/install.sh -o /tmp/install.sh && bash /tmp/install.sh
 ```
 
 ## How It Works
@@ -14,6 +18,7 @@ The installer asks a series of questions (WiFi, MQTT, board type, etc.) and then
 
 1. **Scanner** — Downloads a pre-built firmware binary, generates a per-user NVS config partition, verifies the connected chip, and flashes both to the ESP32 via `esptool`
 2. **Middleware** — Clones SpoolSense, installs Python dependencies, generates `config.yaml`, and creates a systemd service
+3. **Spoolman** — Optionally creates extra fields in Spoolman (`nfc_id`, `tag_format`, `aspect`, `dry_temp`, `dry_time_hours`) needed for full tag data tracking
 
 No PlatformIO or toolchain install required. Just Python 3 and a USB cable.
 
@@ -24,6 +29,8 @@ Run this installer **from your printer host** (Raspberry Pi) with the ESP32 conn
 If your printer host has no free USB port:
 1. Flash the scanner from your laptop (choose "Scanner only")
 2. Run the installer again on the Pi (choose "Middleware only")
+
+After installation, open `http://spoolsense.local` in your browser to retrieve your **Scanner Device ID** — you'll need this for the middleware configuration.
 
 **Note:** SpoolSense middleware must run on the printer host.
 
