@@ -27,7 +27,7 @@ import subprocess
 import sys
 import tempfile
 import urllib.request
-from typing import Callable
+from typing import Callable, Dict, List, Optional, Union
 
 GITHUB_API = "https://api.github.com/repos/SpoolSense/spoolsense_scanner/releases/latest"
 SPOOLMAN_NFC_FIELD_KEY = "nfc_id"
@@ -59,7 +59,7 @@ BOARDS = {
 
 # ─── Input helpers ────────────────────────────────────────────────────────────
 
-def ask(prompt: str, default: str | None = None, password: bool = False, validate: Callable[[str], str | None] | None = None) -> str:
+def ask(prompt: str, default: Optional[str] = None, password: bool = False, validate: Optional[Callable[[str], Optional[str]]] = None) -> str:
     """Ask the user for input with optional default, password masking, and validation."""
     while True:
         suffix = f" [{default}]" if default else ""
@@ -80,7 +80,7 @@ def ask(prompt: str, default: str | None = None, password: bool = False, validat
         return value
 
 
-def ask_choice(prompt: str, options: dict[str, str]) -> str:
+def ask_choice(prompt: str, options: Dict[str, str]) -> str:
     """Ask the user to pick from a numbered list. Returns the key."""
     print(f"\n{prompt}")
     keys = list(options.keys())
@@ -112,13 +112,13 @@ def ask_yesno(prompt: str, default: bool = True) -> bool:
         print("  Please enter y or n")
 
 
-def validate_not_empty(value: str) -> str | None:
+def validate_not_empty(value: str) -> Optional[str]:
     if not value:
         return "Cannot be empty"
     return None
 
 
-def validate_ssid(value: str) -> str | None:
+def validate_ssid(value: str) -> Optional[str]:
     if not value:
         return "Cannot be empty"
     if len(value) > 32:
@@ -159,7 +159,7 @@ def is_valid_hostname(value: str) -> bool:
     return True
 
 
-def validate_host(value: str) -> str | None:
+def validate_host(value: str) -> Optional[str]:
     """Validate a value as an IPv4 address or hostname."""
     if not value:
         return "Cannot be empty"
@@ -174,7 +174,7 @@ def validate_host(value: str) -> str | None:
     return "Must be a valid IP address (e.g. 192.168.1.100) or hostname (e.g. mqtt.local)"
 
 
-def validate_port(value: str) -> str | None:
+def validate_port(value: str) -> Optional[str]:
     """Validate a port number."""
     if not value.isdigit():
         return "Must be a number"
@@ -184,7 +184,7 @@ def validate_port(value: str) -> str | None:
     return None
 
 
-def validate_url(value: str) -> str | None:
+def validate_url(value: str) -> Optional[str]:
     """Validate an HTTP/HTTPS URL with host validation."""
     if not value:
         return "Cannot be empty"
@@ -208,7 +208,7 @@ def validate_url(value: str) -> str | None:
 
 # ─── Config collection ────────────────────────────────────────────────────────
 
-def collect_scanner_config() -> dict[str, str | int]:
+def collect_scanner_config() -> Dict[str, Union[str, int]]:
     """Collect scanner configuration from user input."""
     print(f"\n{C.CYAN}── Scanner Configuration ──────────────{C.RESET}\n")
 
@@ -258,7 +258,7 @@ def collect_scanner_config() -> dict[str, str | int]:
     }
 
 
-def collect_middleware_config() -> dict[str, str | list[str]]:
+def collect_middleware_config() -> Dict[str, Union[str, List[str]]]:
     """Collect middleware configuration from user input."""
     print(f"\n{C.CYAN}── Middleware Configuration ────────────{C.RESET}\n")
 
@@ -287,7 +287,7 @@ def collect_middleware_config() -> dict[str, str | list[str]]:
 
 # ─── NVS partition generation ─────────────────────────────────────────────────
 
-def generate_nvs_csv(config: dict[str, str | int]) -> str:
+def generate_nvs_csv(config: Dict[str, Union[str, int]]) -> str:
     """Generate NVS partition CSV from scanner config dict."""
     lines = [
         "key,type,encoding,value",
@@ -371,7 +371,7 @@ def download_asset(release: dict, suffix: str) -> bytes:
     sys.exit(1)
 
 
-def detect_usb_port() -> str | None:
+def detect_usb_port() -> Optional[str]:
     """Auto-detect the ESP32 USB port."""
     print(f"\n{C.CYAN}── Detecting ESP32 ─────────────────────{C.RESET}\n")
 
@@ -413,7 +413,7 @@ def detect_usb_port() -> str | None:
             pass
 
 
-def verify_flash(port: str | None, board_key: str) -> bool:
+def verify_flash(port: Optional[str], board_key: str) -> bool:
     """Verify the connected chip matches the selected board and has sufficient flash."""
     board_name, expected_chip, _, min_flash, _ = BOARDS[board_key]
     print(f"\n  Verifying chip...")
@@ -500,7 +500,7 @@ def setup_spoolman_extra_fields(spoolman_url: str) -> None:
             print(f"  {C.YELLOW}!{C.RESET} Could not create {entity_type}.{key}: {e}")
 
 
-def flash_firmware(port: str | None, board_key: str, firmware_bin: bytes, nvs_bin_path: str, partitions_bin_path: str, bootloader_bin_path: str) -> None:
+def flash_firmware(port: Optional[str], board_key: str, firmware_bin: bytes, nvs_bin_path: str, partitions_bin_path: str, bootloader_bin_path: str) -> None:
     """Flash bootloader + partition table + NVS config + firmware to the ESP32."""
     print(f"\n  Flashing firmware...")
     print(f"{C.YELLOW}  ⚠ {C.RESET} Do NOT disconnect the USB cable during flashing!\n")
