@@ -9,6 +9,8 @@ reviews:
   auto_review:
     enabled: true
     drafts: false
+    base_branches:
+      - ".*"
 
 instructions: |
   Python CLI installer for SpoolSense (scanner firmware + middleware).
