@@ -58,7 +58,7 @@ BOARDS = {
 
 # ─── Input helpers ────────────────────────────────────────────────────────────
 
-def ask(prompt, default=None, password=False, validate=None):
+def ask(prompt: str, default: str | None = None, password: bool = False, validate: callable | None = None) -> str:
     """Ask the user for input with optional default, password masking, and validation."""
     while True:
         suffix = f" [{default}]" if default else ""
@@ -79,7 +79,7 @@ def ask(prompt, default=None, password=False, validate=None):
         return value
 
 
-def ask_choice(prompt, options):
+def ask_choice(prompt: str, options: dict[str, str]) -> str:
     """Ask the user to pick from a numbered list. Returns the key."""
     print(f"\n{prompt}")
     keys = list(options.keys())
@@ -97,7 +97,7 @@ def ask_choice(prompt, options):
         print(f"  Please enter 1-{len(keys)}")
 
 
-def ask_yesno(prompt, default=True):
+def ask_yesno(prompt: str, default: bool = True) -> bool:
     """Ask a yes/no question. Returns bool."""
     hint = "Y/n" if default else "y/N"
     while True:
@@ -111,13 +111,13 @@ def ask_yesno(prompt, default=True):
         print("  Please enter y or n")
 
 
-def validate_not_empty(value):
+def validate_not_empty(value: str) -> str | None:
     if not value:
         return "Cannot be empty"
     return None
 
 
-def validate_ssid(value):
+def validate_ssid(value: str) -> str | None:
     if not value:
         return "Cannot be empty"
     if len(value) > 32:
@@ -125,7 +125,7 @@ def validate_ssid(value):
     return None
 
 
-def is_valid_ipv4(value):
+def is_valid_ipv4(value: str) -> bool:
     """Validate an IPv4 address using logic, not regex."""
     parts = value.split(".")
     if len(parts) != 4:
@@ -143,7 +143,7 @@ def is_valid_ipv4(value):
     return True
 
 
-def is_valid_hostname(value):
+def is_valid_hostname(value: str) -> bool:
     """Validate a hostname (RFC 952/1123)."""
     if len(value) > 253:
         return False
@@ -158,7 +158,7 @@ def is_valid_hostname(value):
     return True
 
 
-def validate_host(value):
+def validate_host(value: str) -> str | None:
     """Validate a value as an IPv4 address or hostname."""
     if not value:
         return "Cannot be empty"
@@ -173,7 +173,7 @@ def validate_host(value):
     return "Must be a valid IP address (e.g. 192.168.1.100) or hostname (e.g. mqtt.local)"
 
 
-def validate_port(value):
+def validate_port(value: str) -> str | None:
     """Validate a port number."""
     if not value.isdigit():
         return "Must be a number"
@@ -183,7 +183,7 @@ def validate_port(value):
     return None
 
 
-def validate_url(value):
+def validate_url(value: str) -> str | None:
     """Validate an HTTP/HTTPS URL with host validation."""
     if not value:
         return "Cannot be empty"
@@ -207,7 +207,7 @@ def validate_url(value):
 
 # ─── Config collection ────────────────────────────────────────────────────────
 
-def collect_scanner_config():
+def collect_scanner_config() -> dict[str, str | int]:
     """Collect scanner configuration from user input."""
     print(f"\n{C.CYAN}── Scanner Configuration ──────────────{C.RESET}\n")
 
@@ -257,7 +257,7 @@ def collect_scanner_config():
     }
 
 
-def collect_middleware_config():
+def collect_middleware_config() -> dict[str, str | list[str]]:
     """Collect middleware configuration from user input."""
     print(f"\n{C.CYAN}── Middleware Configuration ────────────{C.RESET}\n")
 
@@ -286,7 +286,7 @@ def collect_middleware_config():
 
 # ─── NVS partition generation ─────────────────────────────────────────────────
 
-def generate_nvs_csv(config):
+def generate_nvs_csv(config: dict[str, str | int]) -> str:
     """Generate NVS partition CSV from scanner config dict."""
     lines = [
         "key,type,encoding,value",
@@ -305,7 +305,7 @@ def generate_nvs_csv(config):
     return "\n".join(lines) + "\n"
 
 
-def generate_nvs_bin(csv_content, output_path, size=0x5000):
+def generate_nvs_bin(csv_content: str, output_path: str, size: int = 0x5000) -> str:
     """Generate NVS partition binary using esptool's nvs_partition_gen or a bundled version."""
     csv_path = output_path + ".csv"
     with open(csv_path, "w") as f:
@@ -335,7 +335,7 @@ def generate_nvs_bin(csv_content, output_path, size=0x5000):
 
 # ─── Firmware download + flash ────────────────────────────────────────────────
 
-def fetch_latest_release():
+def fetch_latest_release() -> dict:
     """Fetch latest release info from GitHub API."""
     print("\n  Fetching latest release...")
     try:
@@ -348,7 +348,7 @@ def fetch_latest_release():
         sys.exit(1)
 
 
-def download_asset(release, suffix):
+def download_asset(release: dict, suffix: str) -> bytes:
     """Download a firmware asset matching the given suffix."""
     # Match spoolsense_scanner_<suffix>.bin specifically, not partitions or other files
     target_name = f"spoolsense_scanner_{suffix}.bin"
@@ -370,7 +370,7 @@ def download_asset(release, suffix):
     sys.exit(1)
 
 
-def detect_usb_port():
+def detect_usb_port() -> str | None:
     """Auto-detect the ESP32 USB port."""
     print(f"\n{C.CYAN}── Detecting ESP32 ─────────────────────{C.RESET}\n")
 
@@ -412,7 +412,7 @@ def detect_usb_port():
             pass
 
 
-def verify_flash(port, board_key):
+def verify_flash(port: str | None, board_key: str) -> bool:
     """Verify the connected chip matches the selected board and has sufficient flash."""
     board_name, expected_chip, _, min_flash, _ = BOARDS[board_key]
     print(f"\n  Verifying chip...")
@@ -459,7 +459,7 @@ def verify_flash(port, board_key):
     return True
 
 
-def setup_spoolman_extra_fields(spoolman_url):
+def setup_spoolman_extra_fields(spoolman_url: str) -> None:
     """Create extra fields in Spoolman for tag data enrichment."""
     # Fields to create: (entity_type, key, field_type, display_name)
     fields = [
@@ -499,7 +499,7 @@ def setup_spoolman_extra_fields(spoolman_url):
             print(f"  {C.YELLOW}!{C.RESET} Could not create {entity_type}.{key}: {e}")
 
 
-def flash_firmware(port, board_key, firmware_bin, nvs_bin_path, partitions_bin_path, bootloader_bin_path):
+def flash_firmware(port: str | None, board_key: str, firmware_bin: bytes, nvs_bin_path: str, partitions_bin_path: str, bootloader_bin_path: str) -> None:
     """Flash bootloader + partition table + NVS config + firmware to the ESP32."""
     print(f"\n  Flashing firmware...")
     print(f"{C.YELLOW}  ⚠ {C.RESET} Do NOT disconnect the USB cable during flashing!\n")
@@ -549,7 +549,7 @@ def flash_firmware(port, board_key, firmware_bin, nvs_bin_path, partitions_bin_p
 
 # ─── Middleware install ────────────────────────────────────────────────────────
 
-def generate_middleware_config(scanner_config, middleware_config):
+def generate_middleware_config(scanner_config: dict, middleware_config: dict) -> str:
     """Generate middleware config.yaml from collected settings."""
     template_name = f"config.{middleware_config['mode']}.yaml"
     template_path = os.path.join(SCRIPT_DIR, "templates", template_name)
@@ -583,7 +583,7 @@ low_spool_threshold: 100
     return config_yaml
 
 
-def install_middleware(config_yaml):
+def install_middleware(config_yaml: str) -> None:
     """Clone SpoolSense middleware, install deps, write config, create service."""
     print(f"\n{C.CYAN}── Installing Middleware ────────────────{C.RESET}\n")
 
@@ -621,7 +621,7 @@ def install_middleware(config_yaml):
         create_systemd_service()
 
 
-def create_systemd_service():
+def create_systemd_service() -> None:
     """Create and enable systemd service for SpoolSense middleware."""
     service_content = f"""[Unit]
 Description=SpoolSense Middleware
@@ -661,7 +661,7 @@ WantedBy=multi-user.target
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
-def main():
+def main() -> None:
     print(f"""{C.CYAN}{C.BOLD}
   ____                    _ ____
  / ___| _ __   ___   ___ | / ___|  ___ _ __  ___  ___
