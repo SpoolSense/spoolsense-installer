@@ -27,6 +27,7 @@ import subprocess
 import sys
 import tempfile
 import urllib.request
+from typing import Callable
 
 GITHUB_API = "https://api.github.com/repos/SpoolSense/spoolsense_scanner/releases/latest"
 SPOOLMAN_NFC_FIELD_KEY = "nfc_id"
@@ -58,7 +59,7 @@ BOARDS = {
 
 # ─── Input helpers ────────────────────────────────────────────────────────────
 
-def ask(prompt: str, default: str | None = None, password: bool = False, validate: callable | None = None) -> str:
+def ask(prompt: str, default: str | None = None, password: bool = False, validate: Callable[[str], str | None] | None = None) -> str:
     """Ask the user for input with optional default, password masking, and validation."""
     while True:
         suffix = f" [{default}]" if default else ""
