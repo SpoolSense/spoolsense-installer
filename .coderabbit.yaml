@@ -1,0 +1,25 @@
+language: "en-US"
+
+reviews:
+  profile: "assertive"
+  request_changes_workflow: true
+  high_level_summary: true
+  poem: false
+  review_status: true
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - ".*"
+  instructions: |
+  Python CLI installer for SpoolSense (scanner firmware + middleware).
+  Single-file script (install.py) that runs on Raspberry Pi and laptops.
+
+  ## Project-specific rules
+
+  - All functions must have type hints and docstrings
+  - User input must be validated before use (validate_* functions)
+  - Passwords must use getpass, never plain input()
+  - All external commands (esptool, git, pip) must handle FileNotFoundError
+  - sys.exit() calls must have user-friendly error messages, not raw tracebacks
+  - Support Linux (Pi), macOS, and Windows where possible
