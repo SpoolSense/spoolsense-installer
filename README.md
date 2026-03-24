@@ -17,7 +17,12 @@ curl -sL https://raw.githubusercontent.com/SpoolSense/spoolsense-installer/main/
 The installer asks a series of questions (WiFi, MQTT, board type, etc.) and then:
 
 1. **Scanner** — Downloads a pre-built firmware binary, generates a per-user NVS config partition, verifies the connected chip, and flashes both to the ESP32 via `esptool`
-2. **Middleware** — Clones SpoolSense, installs Python dependencies, generates `config.yaml`, and creates a systemd service
+2. **Middleware** — Clones SpoolSense, installs Python dependencies, generates `config.yaml`, and creates a systemd service. The installer asks for your setup type and generates the appropriate scanner config:
+   - **AFC shared scanner** (`afc_stage`) — one scanner for all BoxTurtle/NightOwl lanes
+   - **AFC per-lane** (`afc_lane`) — one scanner per lane
+   - **Toolchanger shared scanner** (`toolhead_stage`) — one scanner for all toolheads (klipper-toolchanger)
+   - **Toolchanger per-toolhead** (`toolhead`) — one scanner per tool
+   - **Single toolhead** (`single`) — one scanner, one extruder
 3. **Spoolman** — Optionally creates extra fields in Spoolman (`nfc_id`, `tag_format`, `aspect`, `dry_temp`, `dry_time_hours`) needed for full tag data tracking
 
 
