@@ -11,8 +11,7 @@ reviews:
     drafts: false
     base_branches:
       - ".*"
-
-instructions: |
+  instructions: |
   Python CLI installer for SpoolSense (scanner firmware + middleware).
   Single-file script (install.py) that runs on Raspberry Pi and laptops.
 
