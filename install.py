@@ -308,10 +308,11 @@ def collect_middleware_config() -> Dict[str, Union[str, List[str]]]:
     # Only relevant for setups without AFC/Happy Hare handling lane data
     publish_lane_data = False
     if setup_type not in ("afc_stage", "afc_lane"):
-        print(f"\n  {C.YELLOW}Slicer integration:{C.RESET} SpoolSense can publish spool data")
-        print("  (color, material, weight, temps) so Orca Slicer auto-populates")
-        print("  tool info. Only enable if AFC or Happy Hare is NOT installed.\n")
-        publish_lane_data = ask_yesno("Enable slicer integration (publish_lane_data)?", default=False)
+        print(f"\n  {C.YELLOW}Slicer integration:{C.RESET} Slicers like Orca Slicer can auto-populate")
+        print("  tool colors, materials, and temps from your scanned spools.")
+        print(f"\n  AFC and Happy Hare already provide this feature. If you use")
+        print(f"  either of those, say No — they handle it for you.\n")
+        publish_lane_data = ask_yesno("Enable slicer integration?", default=False)
 
     return {
         "setup_type": setup_type,
