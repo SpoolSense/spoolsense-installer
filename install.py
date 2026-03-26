@@ -304,10 +304,21 @@ def collect_middleware_config() -> Dict[str, Union[str, List[str]]]:
 
     moonraker_url = ask("Moonraker URL", default="http://localhost", validate=validate_url)
 
+    # Lane data publishing — for slicer integration (Orca Slicer, etc.)
+    # Only relevant for setups without AFC/Happy Hare handling lane data
+    publish_lane_data = False
+    if setup_type not in ("afc_stage", "afc_lane"):
+        print(f"\n  {C.YELLOW}Slicer integration:{C.RESET} Slicers like Orca Slicer can auto-populate")
+        print("  tool colors, materials, and temps from your scanned spools.")
+        print(f"\n  AFC and Happy Hare already provide this feature. If you use")
+        print(f"  either of those, say No — they handle it for you.\n")
+        publish_lane_data = ask_yesno("Enable slicer integration?", default=False)
+
     return {
         "setup_type": setup_type,
         "scanners": scanners,
         "moonraker_url": moonraker_url,
+        "publish_lane_data": publish_lane_data,
     }
 
 
@@ -615,6 +626,11 @@ scanner_topic_prefix: "spoolsense"
 
 scanners:
 {scanners_yaml}
+
+# Slicer integration — publish spool data to Moonraker's lane_data database
+# so Orca Slicer (and other slicers) can auto-populate tool colors/materials/temps.
+# Only enable if AFC or Happy Hare is NOT handling lane data.
+publish_lane_data: {str(middleware_config.get('publish_lane_data', False)).lower()}
 """
     return config_yaml
 
