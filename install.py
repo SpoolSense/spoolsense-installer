@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-__version__ = "1.2.0"
+__version__ = "1.2.1"
 """
 SpoolSense Installer — interactive CLI for scanner firmware + middleware setup.
 
@@ -884,6 +884,17 @@ def main() -> None:
     if mode in ("both", "middleware"):
         config_yaml = generate_middleware_config(scanner_config, middleware_config)
         install_middleware(config_yaml)
+
+        # Copy Klipper macro for toolhead_stage users
+        if middleware_config.get("setup_type") == "toolhead_stage":
+            klipper_cfg_src = os.path.join(MIDDLEWARE_DIR, "middleware", "klipper", "spoolsense.cfg")
+            klipper_cfg_dst = os.path.expanduser("~/printer_data/config/spoolsense.cfg")
+            if os.path.exists(klipper_cfg_src):
+                shutil.copy2(klipper_cfg_src, klipper_cfg_dst)
+                print(f"  {C.GREEN}✓{C.RESET} Klipper macro copied to {klipper_cfg_dst}")
+                print(f"\n  {C.YELLOW}Important:{C.RESET} Add this line to your printer.cfg:")
+                print(f"    [include spoolsense.cfg]")
+                print(f"  Then restart Klipper.\n")
 
     # ── Done ──────────────────────────────────────────────────────────────────
     print("")

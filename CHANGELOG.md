@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1] - 2026-03-26
+
+### Added
+- **Klipper macro copy** — when `toolhead_stage` is selected, copies `spoolsense.cfg` to `~/printer_data/config/` and reminds the user to add `[include spoolsense.cfg]` to their printer.cfg.
+
+---
+
 ## [1.2.0] - 2026-03-25
 
 ### Added
