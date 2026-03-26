@@ -60,6 +60,7 @@ The installer verifies the connected chip type and flash size before flashing to
 - SpoolSense Python middleware (cloned to `~/SpoolSense`)
 - Python dependencies
 - Generated `config.yaml` with your settings
+- Optional slicer integration (`publish_lane_data`) — publishes spool data for Orca Slicer. AFC and Happy Hare users don't need this.
 - systemd service (`spoolsense.service`) — starts on boot
 
 ## Requirements
