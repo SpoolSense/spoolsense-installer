@@ -246,6 +246,13 @@ def collect_scanner_config() -> Dict[str, Union[str, int]]:
     print(f"\n{C.CYAN}── Optional Hardware ──────────────────{C.RESET}\n")
     lcd_on = ask_yesno("16x2 I2C LCD display attached?", default=False)
     led_on = ask_yesno("Status LED attached?", default=True)
+    keypad_on = ask_yesno("3x4 matrix keypad attached?", default=False)
+
+    print(f"\n{C.CYAN}── Printer Integration ────────────────{C.RESET}\n")
+    moonraker_url = ""
+    if ask_yesno("Klipper / Moonraker printer?", default=False):
+        moonraker_url = ask("Moonraker URL", default="http://localhost:7125",
+                            validate=validate_url)
 
     return {
         "board": board,
@@ -261,6 +268,8 @@ def collect_scanner_config() -> Dict[str, Union[str, int]]:
         "auto_mode": int(auto_mode),
         "lcd_on": 1 if lcd_on else 0,
         "led_on": 1 if led_on else 0,
+        "keypad_on": 1 if keypad_on else 0,
+        "moonraker_url": moonraker_url,
     }
 
 
@@ -347,6 +356,8 @@ def generate_nvs_csv(config: Dict[str, Union[str, int]]) -> str:
         f"auto_mode,data,u8,{config['auto_mode']}",
         f"lcd_on,data,u8,{config['lcd_on']}",
         f"led_on,data,u8,{config['led_on']}",
+        f"keypad_on,data,u8,{config['keypad_on']}",
+        f"moonraker_url,data,string,{config['moonraker_url']}",
     ]
     return "\n".join(lines) + "\n"
 
