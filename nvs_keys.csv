@@ -10,3 +10,5 @@ mqtt_prefix,data,string,MQTT topic prefix (default spoolsense)
 spoolman_on,data,u8,Spoolman enabled (1) or disabled (0)
 spoolman_url,data,string,Spoolman base URL
 auto_mode,data,u8,Automation mode: 0=Self Directed 1=Controlled by HA
+lcd_on,data,u8,LCD display enabled (1) or disabled (0)
+led_on,data,u8,Status LED enabled (1) or disabled (0)

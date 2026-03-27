@@ -243,6 +243,10 @@ def collect_scanner_config() -> Dict[str, Union[str, int]]:
         "1": "Controlled by HA — Home Assistant controls deduction",
     })
 
+    print(f"\n{C.CYAN}── Optional Hardware ──────────────────{C.RESET}\n")
+    lcd_on = ask_yesno("16x2 I2C LCD display attached?", default=False)
+    led_on = ask_yesno("Status LED attached?", default=True)
+
     return {
         "board": board,
         "wifi_ssid": wifi_ssid,
@@ -255,6 +259,8 @@ def collect_scanner_config() -> Dict[str, Union[str, int]]:
         "spoolman_on": 1 if spoolman_on else 0,
         "spoolman_url": spoolman_url,
         "auto_mode": int(auto_mode),
+        "lcd_on": 1 if lcd_on else 0,
+        "led_on": 1 if led_on else 0,
     }
 
 
@@ -339,6 +345,8 @@ def generate_nvs_csv(config: Dict[str, Union[str, int]]) -> str:
         f"spoolman_on,data,u8,{config['spoolman_on']}",
         f"spoolman_url,data,string,{config['spoolman_url']}",
         f"auto_mode,data,u8,{config['auto_mode']}",
+        f"lcd_on,data,u8,{config['lcd_on']}",
+        f"led_on,data,u8,{config['led_on']}",
     ]
     return "\n".join(lines) + "\n"
 
@@ -455,10 +463,10 @@ def verify_flash(port: Optional[str], board_key: str) -> bool:
     board_name, expected_chip, _, min_flash, _ = BOARDS[board_key]
     print(f"\n  Verifying chip...")
 
-    cmd = ["esptool.py"]
+    cmd = ["esptool"]
     if port:
         cmd.extend(["--port", port])
-    cmd.append("flash_id")
+    cmd.append("flash-id")
 
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
@@ -542,12 +550,12 @@ def flash_firmware(port: Optional[str], board_key: str, firmware_bin: bytes, nvs
     print(f"\n  Flashing firmware...")
     print(f"{C.YELLOW}  ⚠ {C.RESET} Do NOT disconnect the USB cable during flashing!\n")
 
-    cmd = ["esptool.py"]
+    cmd = ["esptool"]
     if port:
         cmd.extend(["--port", port])
 
     board_name, chip, _, _, bootloader_offset = BOARDS[board_key]
-    cmd.extend(["--chip", chip, "write_flash"])
+    cmd.extend(["--chip", chip, "write-flash"])
 
     # Write bootloader, partition table, NVS config, and firmware
     with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as fw_file:
@@ -859,7 +867,7 @@ def main() -> None:
             sys.executable, "-m", "esptool",
             "--chip", chip,
             "--port", port,
-            "write_flash",
+            "write-flash",
             "0x9000", nvs_bin_path,
         ]
         result = subprocess.run(cmd, capture_output=True, text=True)
