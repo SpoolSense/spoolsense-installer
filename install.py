@@ -320,13 +320,18 @@ def collect_middleware_config() -> Dict[str, Union[str, List[str]]]:
     moonraker_url = ask("Moonraker URL", default="http://localhost", validate=validate_url)
 
     # Lane data publishing — for slicer integration (Orca Slicer, etc.)
-    # Only relevant for setups without AFC/Happy Hare handling lane data
     publish_lane_data = False
-    if setup_type not in ("afc_stage", "afc_lane"):
+    if setup_type == "afc_stage":
         print(f"\n  {C.YELLOW}Slicer integration:{C.RESET} Slicers like Orca Slicer can auto-populate")
         print("  tool colors, materials, and temps from your scanned spools.")
-        print(f"\n  AFC and Happy Hare already provide this feature. If you use")
-        print(f"  either of those, say No — they handle it for you.\n")
+        print(f"\n  AFC handles lane data for its own lanes automatically.")
+        print(f"  Enable this if you also have direct toolheads (e.g. a toolchanger")
+        print(f"  with a Box Turtle) and want slicer data for those tools too.")
+        print(f"  This also enables the ASSIGN_SPOOL macro for tool assignment.\n")
+        publish_lane_data = ask_yesno("Enable slicer integration for toolheads?", default=False)
+    elif setup_type not in ("afc_lane",):
+        print(f"\n  {C.YELLOW}Slicer integration:{C.RESET} Slicers like Orca Slicer can auto-populate")
+        print("  tool colors, materials, and temps from your scanned spools.\n")
         publish_lane_data = ask_yesno("Enable slicer integration?", default=False)
 
     return {
