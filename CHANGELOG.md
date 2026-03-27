@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.2.2] - 2026-03-27
+
+### Added
+- Prompts for optional hardware (16x2 I2C LCD display, status LED) during scanner setup. Answers are written to NVS (`lcd_on`, `led_on`) so the firmware enables only attached hardware on boot.
+
+### Fixed
+- Deprecated `esptool.py` replaced with `esptool`, `write_flash` with `write-flash`, `flash_id` with `flash-id` to suppress deprecation warnings.
+
+---
+
 ## [1.2.1] - 2026-03-26
 
 ### Added
