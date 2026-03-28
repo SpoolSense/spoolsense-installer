@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.4] - 2026-03-28
+
+### Added
+- NFC reader selection prompt (`pn5180` or `pn532`) during scanner setup. Written to NVS as `nfc_reader` string key.
+- `nfc_reader` entry added to `nvs_keys.csv` documentation.
+- Device ID reminder in post-flash output for all install modes.
+
+### Fixed
+- Validator for NFC reader prompt now returns error string instead of bool (was rejecting valid inputs).
+
+---
+
 ## [1.2.3] - 2026-03-27
 
 ### Added
