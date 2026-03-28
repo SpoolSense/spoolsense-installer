@@ -676,13 +676,19 @@ def install_middleware(config_yaml: str) -> None:
     print("  Installing Python dependencies...")
     req_file = os.path.join(MIDDLEWARE_DIR, "middleware", "requirements.txt")
     if os.path.exists(req_file):
-        result = subprocess.run([sys.executable, "-m", "pip", "install", "--quiet",
-                                 "--break-system-packages", "-r", req_file],
-                                capture_output=True, text=True)
+        try:
+            result = subprocess.run([sys.executable, "-m", "pip", "install", "--quiet",
+                                     "--break-system-packages", "-r", req_file],
+                                    capture_output=True, text=True, timeout=300)
+        except subprocess.TimeoutExpired:
+            print(f"  {C.RED}✗ pip install timed out after 5 minutes{C.RESET}")
+            print(f"    Try manually: pip3 install -r {req_file}")
+            sys.exit(1)
         if result.returncode != 0:
             print(f"  {C.RED}✗ Failed to install Python dependencies{C.RESET}")
-            if result.stderr:
-                print(f"    {result.stderr.strip()}")
+            output = result.stderr.strip() if result.stderr else result.stdout.strip()
+            if output:
+                print(f"    {output}")
             print(f"    Try manually: pip3 install -r {req_file}")
             sys.exit(1)
         print("  ✓ Dependencies installed")
