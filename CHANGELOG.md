@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.3] - 2026-03-27
+
+### Added
+- Keypad and Moonraker URL prompts during scanner setup. Writes `keypad_on` and `moonraker_url` to NVS.
+- Slicer integration prompt now shown for `afc_stage` users with hybrid setups (toolchanger + AFC). Explains that `publish_lane_data` enables ASSIGN_SPOOL macro watcher for direct toolheads alongside AFC lanes.
+
+---
+
 ## [1.2.2] - 2026-03-27
 
 ### Added

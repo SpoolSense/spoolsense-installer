@@ -246,6 +246,13 @@ def collect_scanner_config() -> Dict[str, Union[str, int]]:
     print(f"\n{C.CYAN}── Optional Hardware ──────────────────{C.RESET}\n")
     lcd_on = ask_yesno("16x2 I2C LCD display attached?", default=False)
     led_on = ask_yesno("Status LED attached?", default=True)
+    keypad_on = ask_yesno("3x4 matrix keypad attached?", default=False)
+
+    print(f"\n{C.CYAN}── Printer Integration ────────────────{C.RESET}\n")
+    moonraker_url = ""
+    if ask_yesno("Klipper / Moonraker printer?", default=False):
+        moonraker_url = ask("Moonraker URL", default="http://localhost:7125",
+                            validate=validate_url)
 
     return {
         "board": board,
@@ -261,6 +268,8 @@ def collect_scanner_config() -> Dict[str, Union[str, int]]:
         "auto_mode": int(auto_mode),
         "lcd_on": 1 if lcd_on else 0,
         "led_on": 1 if led_on else 0,
+        "keypad_on": 1 if keypad_on else 0,
+        "moonraker_url": moonraker_url,
     }
 
 
@@ -311,13 +320,18 @@ def collect_middleware_config() -> Dict[str, Union[str, List[str]]]:
     moonraker_url = ask("Moonraker URL", default="http://localhost", validate=validate_url)
 
     # Lane data publishing — for slicer integration (Orca Slicer, etc.)
-    # Only relevant for setups without AFC/Happy Hare handling lane data
     publish_lane_data = False
-    if setup_type not in ("afc_stage", "afc_lane"):
+    if setup_type == "afc_stage":
         print(f"\n  {C.YELLOW}Slicer integration:{C.RESET} Slicers like Orca Slicer can auto-populate")
         print("  tool colors, materials, and temps from your scanned spools.")
-        print(f"\n  AFC and Happy Hare already provide this feature. If you use")
-        print(f"  either of those, say No — they handle it for you.\n")
+        print("\n  AFC handles lane data for its own lanes automatically.")
+        print("  Enable this if you also have direct toolheads (e.g. a toolchanger")
+        print("  with a Box Turtle) and want slicer data for those tools too.")
+        print("  This also enables the ASSIGN_SPOOL macro for tool assignment.\n")
+        publish_lane_data = ask_yesno("Enable slicer integration for toolheads?", default=False)
+    elif setup_type not in ("afc_lane",):
+        print(f"\n  {C.YELLOW}Slicer integration:{C.RESET} Slicers like Orca Slicer can auto-populate")
+        print("  tool colors, materials, and temps from your scanned spools.\n")
         publish_lane_data = ask_yesno("Enable slicer integration?", default=False)
 
     return {
@@ -347,6 +361,8 @@ def generate_nvs_csv(config: Dict[str, Union[str, int]]) -> str:
         f"auto_mode,data,u8,{config['auto_mode']}",
         f"lcd_on,data,u8,{config['lcd_on']}",
         f"led_on,data,u8,{config['led_on']}",
+        f"keypad_on,data,u8,{config['keypad_on']}",
+        f"moonraker_url,data,string,{config['moonraker_url']}",
     ]
     return "\n".join(lines) + "\n"
 
