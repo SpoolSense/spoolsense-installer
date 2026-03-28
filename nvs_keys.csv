@@ -13,4 +13,5 @@ auto_mode,data,u8,Automation mode: 0=Self Directed 1=Controlled by HA
 lcd_on,data,u8,LCD display enabled (1) or disabled (0)
 led_on,data,u8,Status LED enabled (1) or disabled (0)
 keypad_on,data,u8,3x4 matrix keypad enabled (1) or disabled (0)
+nfc_reader,data,string,NFC reader model: pn5180 (default) or pn532
 moonraker_url,data,string,Moonraker URL for Klipper integration (e.g. http://printer.local:7125)

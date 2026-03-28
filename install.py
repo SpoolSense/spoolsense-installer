@@ -248,7 +248,8 @@ def collect_scanner_config() -> Dict[str, Union[str, int]]:
     led_on = ask_yesno("Status LED attached?", default=True)
     keypad_on = ask_yesno("3x4 matrix keypad attached?", default=False)
     nfc_reader = ask("NFC reader model", default="pn5180",
-                     validate=lambda v: v.lower() in ("pn5180", "pn532"))
+                     validate=lambda v: None if v.lower() in ("pn5180", "pn532")
+                     else "Must be pn5180 or pn532")
     nfc_reader = nfc_reader.lower()
 
     print(f"\n{C.CYAN}── Printer Integration ────────────────{C.RESET}\n")
