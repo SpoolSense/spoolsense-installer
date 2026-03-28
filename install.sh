@@ -23,6 +23,15 @@ if ! command -v python3 &>/dev/null; then
     exit 1
 fi
 
+# Check Python version >= 3.9
+if ! python3 -c "import sys; exit(0) if sys.version_info >= (3,9) else exit(1)" 2>/dev/null; then
+    PY_VER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+    echo "ERROR: Python 3.9 or newer is required."
+    echo "  You have: Python ${PY_VER}"
+    echo "  Install a newer Python or use pyenv."
+    exit 1
+fi
+
 # Check git
 if ! command -v git &>/dev/null; then
     echo "ERROR: git is required but not installed."

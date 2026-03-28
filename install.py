@@ -676,10 +676,27 @@ def install_middleware(config_yaml: str) -> None:
     print("  Installing Python dependencies...")
     req_file = os.path.join(MIDDLEWARE_DIR, "middleware", "requirements.txt")
     if os.path.exists(req_file):
-        subprocess.run([sys.executable, "-m", "pip", "install", "--quiet",
-                        "--break-system-packages", "-r", req_file],
-                       capture_output=True)
-    print("  ✓ Dependencies installed")
+        try:
+            result = subprocess.run([sys.executable, "-m", "pip", "install", "--quiet",
+                                     "--break-system-packages", "-r", req_file],
+                                    capture_output=True, text=True, timeout=300)
+        except subprocess.TimeoutExpired:
+            print(f"  {C.RED}✗ pip install timed out after 5 minutes{C.RESET}")
+            print(f"    Try manually: pip3 install -r {req_file}")
+            sys.exit(1)
+        if result.returncode != 0:
+            print(f"  {C.RED}✗ Failed to install Python dependencies{C.RESET}")
+            output = result.stderr.strip() if result.stderr else result.stdout.strip()
+            if output:
+                print(f"    {output}")
+            print(f"    Try manually: pip3 install -r {req_file}")
+            sys.exit(1)
+        print("  ✓ Dependencies installed")
+    else:
+        print(f"  {C.RED}✗ requirements.txt not found at {req_file}{C.RESET}")
+        print("    The middleware repository may be incomplete. Try deleting")
+        print(f"    {MIDDLEWARE_DIR} and running the installer again.")
+        sys.exit(1)
 
     # Write config
     config_path = os.path.join(MIDDLEWARE_DIR, "middleware", "config.yaml")
@@ -738,6 +755,13 @@ WantedBy=multi-user.target
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 def main() -> None:
+    # Python version check — middleware uses features that require 3.9+
+    if sys.version_info < (3, 9):
+        print(f"\n  {C.RED}✗ Python 3.9 or newer is required.{C.RESET}")
+        print(f"    You have: Python {sys.version_info.major}.{sys.version_info.minor}")
+        print("    Install a newer Python or use pyenv.")
+        sys.exit(1)
+
     print(f"""{C.CYAN}{C.BOLD}
   ____                    _ ____
  / ___| _ __   ___   ___ | / ___|  ___ _ __  ___  ___
