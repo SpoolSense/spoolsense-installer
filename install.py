@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-__version__ = "1.2.1"
+__version__ = "1.2.4"
 """
 SpoolSense Installer — interactive CLI for scanner firmware + middleware setup.
 
@@ -247,6 +247,10 @@ def collect_scanner_config() -> Dict[str, Union[str, int]]:
     lcd_on = ask_yesno("16x2 I2C LCD display attached?", default=False)
     led_on = ask_yesno("Status LED attached?", default=True)
     keypad_on = ask_yesno("3x4 matrix keypad attached?", default=False)
+    nfc_reader = ask("NFC reader model", default="pn5180",
+                     validate=lambda v: None if v.lower() in ("pn5180", "pn532")
+                     else "Must be pn5180 or pn532")
+    nfc_reader = nfc_reader.lower()
 
     print(f"\n{C.CYAN}── Printer Integration ────────────────{C.RESET}\n")
     moonraker_url = ""
@@ -269,6 +273,7 @@ def collect_scanner_config() -> Dict[str, Union[str, int]]:
         "lcd_on": 1 if lcd_on else 0,
         "led_on": 1 if led_on else 0,
         "keypad_on": 1 if keypad_on else 0,
+        "nfc_reader": nfc_reader,
         "moonraker_url": moonraker_url,
     }
 
@@ -362,6 +367,7 @@ def generate_nvs_csv(config: Dict[str, Union[str, int]]) -> str:
         f"lcd_on,data,u8,{config['lcd_on']}",
         f"led_on,data,u8,{config['led_on']}",
         f"keypad_on,data,u8,{config['keypad_on']}",
+        f"nfc_reader,data,string,{config['nfc_reader']}",
         f"moonraker_url,data,string,{config['moonraker_url']}",
     ]
     return "\n".join(lines) + "\n"
@@ -676,10 +682,27 @@ def install_middleware(config_yaml: str) -> None:
     print("  Installing Python dependencies...")
     req_file = os.path.join(MIDDLEWARE_DIR, "middleware", "requirements.txt")
     if os.path.exists(req_file):
-        subprocess.run([sys.executable, "-m", "pip", "install", "--quiet",
-                        "--break-system-packages", "-r", req_file],
-                       capture_output=True)
-    print("  ✓ Dependencies installed")
+        try:
+            result = subprocess.run([sys.executable, "-m", "pip", "install", "--quiet",
+                                     "--break-system-packages", "-r", req_file],
+                                    capture_output=True, text=True, timeout=300)
+        except subprocess.TimeoutExpired:
+            print(f"  {C.RED}✗ pip install timed out after 5 minutes{C.RESET}")
+            print(f"    Try manually: pip3 install -r {req_file}")
+            sys.exit(1)
+        if result.returncode != 0:
+            print(f"  {C.RED}✗ Failed to install Python dependencies{C.RESET}")
+            output = result.stderr.strip() if result.stderr else result.stdout.strip()
+            if output:
+                print(f"    {output}")
+            print(f"    Try manually: pip3 install -r {req_file}")
+            sys.exit(1)
+        print("  ✓ Dependencies installed")
+    else:
+        print(f"  {C.RED}✗ requirements.txt not found at {req_file}{C.RESET}")
+        print("    The middleware repository may be incomplete. Try deleting")
+        print(f"    {MIDDLEWARE_DIR} and running the installer again.")
+        sys.exit(1)
 
     # Write config
     config_path = os.path.join(MIDDLEWARE_DIR, "middleware", "config.yaml")
@@ -738,6 +761,13 @@ WantedBy=multi-user.target
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 def main() -> None:
+    # Python version check — middleware uses features that require 3.9+
+    if sys.version_info < (3, 9):
+        print(f"\n  {C.RED}✗ Python 3.9 or newer is required.{C.RESET}")
+        print(f"    You have: Python {sys.version_info.major}.{sys.version_info.minor}")
+        print("    Install a newer Python or use pyenv.")
+        sys.exit(1)
+
     print(f"""{C.CYAN}{C.BOLD}
   ____                    _ ____
  / ___| _ __   ___   ___ | / ___|  ___ _ __  ___  ___
@@ -933,8 +963,12 @@ def main() -> None:
         print("")
         if mode in ("both", "scanner"):
             print(f"  Scanner:    {C.CYAN}http://spoolsense.local{C.GREEN}")
+            print(f"  Device ID:  Shown on the landing page (needed for middleware config)")
         if mode in ("both", "middleware"):
             print(f"  Middleware: {C.CYAN}systemctl status spoolsense{C.GREEN}")
+            print(f"  Config:     {C.CYAN}~/SpoolSense/middleware/config.yaml{C.GREEN}")
+            print(f"  {C.YELLOW}Remember:{C.RESET}{C.GREEN} Replace YOUR_DEVICE_ID in config.yaml with")
+            print(f"  the device ID from {C.CYAN}http://spoolsense.local{C.GREEN}")
     print("")
     print(f"  Tap a spool to test.{C.RESET}")
     print(f"{C.GREEN}══════════════════════════════════════════{C.RESET}")
