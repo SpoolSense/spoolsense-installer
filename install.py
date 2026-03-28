@@ -247,6 +247,9 @@ def collect_scanner_config() -> Dict[str, Union[str, int]]:
     lcd_on = ask_yesno("16x2 I2C LCD display attached?", default=False)
     led_on = ask_yesno("Status LED attached?", default=True)
     keypad_on = ask_yesno("3x4 matrix keypad attached?", default=False)
+    nfc_reader = ask("NFC reader model", default="pn5180",
+                     validate=lambda v: v.lower() in ("pn5180", "pn532"))
+    nfc_reader = nfc_reader.lower()
 
     print(f"\n{C.CYAN}── Printer Integration ────────────────{C.RESET}\n")
     moonraker_url = ""
@@ -269,6 +272,7 @@ def collect_scanner_config() -> Dict[str, Union[str, int]]:
         "lcd_on": 1 if lcd_on else 0,
         "led_on": 1 if led_on else 0,
         "keypad_on": 1 if keypad_on else 0,
+        "nfc_reader": nfc_reader,
         "moonraker_url": moonraker_url,
     }
 
@@ -362,6 +366,7 @@ def generate_nvs_csv(config: Dict[str, Union[str, int]]) -> str:
         f"lcd_on,data,u8,{config['lcd_on']}",
         f"led_on,data,u8,{config['led_on']}",
         f"keypad_on,data,u8,{config['keypad_on']}",
+        f"nfc_reader,data,string,{config['nfc_reader']}",
         f"moonraker_url,data,string,{config['moonraker_url']}",
     ]
     return "\n".join(lines) + "\n"
