@@ -324,10 +324,10 @@ def collect_middleware_config() -> Dict[str, Union[str, List[str]]]:
     if setup_type == "afc_stage":
         print(f"\n  {C.YELLOW}Slicer integration:{C.RESET} Slicers like Orca Slicer can auto-populate")
         print("  tool colors, materials, and temps from your scanned spools.")
-        print(f"\n  AFC handles lane data for its own lanes automatically.")
-        print(f"  Enable this if you also have direct toolheads (e.g. a toolchanger")
-        print(f"  with a Box Turtle) and want slicer data for those tools too.")
-        print(f"  This also enables the ASSIGN_SPOOL macro for tool assignment.\n")
+        print("\n  AFC handles lane data for its own lanes automatically.")
+        print("  Enable this if you also have direct toolheads (e.g. a toolchanger")
+        print("  with a Box Turtle) and want slicer data for those tools too.")
+        print("  This also enables the ASSIGN_SPOOL macro for tool assignment.\n")
         publish_lane_data = ask_yesno("Enable slicer integration for toolheads?", default=False)
     elif setup_type not in ("afc_lane",):
         print(f"\n  {C.YELLOW}Slicer integration:{C.RESET} Slicers like Orca Slicer can auto-populate")
