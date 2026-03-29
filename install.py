@@ -285,7 +285,7 @@ def collect_middleware_config() -> Dict[str, Union[str, List[str]]]:
     setup_type = ask_choice("Scanner setup:", {
         "afc_stage": "AFC shared scanner (scan spool, load any lane)",
         "afc_lane": "AFC per-lane scanners (one scanner per lane)",
-        "toolhead_stage": "Toolchanger shared scanner (scan spool, pick up any tool)",
+        "toolhead_stage": "Toolchanger shared scanner (scan spool, assign via macro or keypad)",
         "toolchanger": "Toolchanger per-toolhead scanners (one scanner per tool)",
         "single": "Single toolhead (one scanner, one extruder)",
     })
@@ -305,8 +305,8 @@ def collect_middleware_config() -> Dict[str, Union[str, List[str]]]:
             scanners.append({"action": "afc_lane", "lane": lane})
 
     elif setup_type == "toolhead_stage":
-        print(f"\n  {C.YELLOW}Note:{C.RESET} Requires klipper-toolchanger. Scan a spool, then pick")
-        print("  up any tool — the spool is auto-assigned to that tool.\n")
+        print(f"\n  {C.YELLOW}Note:{C.RESET} Scan a spool, then assign it to a tool using the")
+        print("  ASSIGN_SPOOL macro in Klipper console or the 3x4 keypad.\n")
         print(f"  {C.YELLOW}Note:{C.RESET} After flashing your scanner, find its device ID")
         print("  from the MQTT topic: spoolsense/<device_id>/tag/state\n")
         scanners.append({"action": "toolhead_stage"})
