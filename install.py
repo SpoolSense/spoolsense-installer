@@ -944,6 +944,7 @@ def main() -> None:
             klipper_cfg_src = os.path.join(MIDDLEWARE_DIR, "middleware", "klipper", "spoolsense.cfg")
             klipper_cfg_dst = os.path.expanduser("~/printer_data/config/spoolsense.cfg")
             if os.path.exists(klipper_cfg_src):
+                os.makedirs(os.path.dirname(klipper_cfg_dst), exist_ok=True)
                 shutil.copy2(klipper_cfg_src, klipper_cfg_dst)
                 print(f"  {C.GREEN}✓{C.RESET} Klipper macro copied to {klipper_cfg_dst}")
                 print(f"\n  {C.YELLOW}Important:{C.RESET} Add this line to your printer.cfg:")
