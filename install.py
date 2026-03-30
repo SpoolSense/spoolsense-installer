@@ -245,6 +245,11 @@ def collect_scanner_config() -> Dict[str, Union[str, int]]:
 
     print(f"\n{C.CYAN}── Optional Hardware ──────────────────{C.RESET}\n")
     lcd_on = ask_yesno("16x2 I2C LCD display attached?", default=False)
+    tft_on = False
+    if not lcd_on:
+        tft_on = ask_yesno("TFT display attached (ST7789 240x240)?", default=False)
+    if tft_on:
+        lcd_on = False  # mutual exclusion — shared GPIO 22/23 on WROOM
     led_on = ask_yesno("Status LED attached?", default=True)
     keypad_on = ask_yesno("3x4 matrix keypad attached?", default=False)
     nfc_reader = ask("NFC reader model", default="pn5180",
@@ -271,6 +276,7 @@ def collect_scanner_config() -> Dict[str, Union[str, int]]:
         "spoolman_url": spoolman_url,
         "auto_mode": int(auto_mode),
         "lcd_on": 1 if lcd_on else 0,
+        "tft_on": 1 if tft_on else 0,
         "led_on": 1 if led_on else 0,
         "keypad_on": 1 if keypad_on else 0,
         "nfc_reader": nfc_reader,
@@ -365,6 +371,7 @@ def generate_nvs_csv(config: Dict[str, Union[str, int]]) -> str:
         f"spoolman_url,data,string,{config['spoolman_url']}",
         f"auto_mode,data,u8,{config['auto_mode']}",
         f"lcd_on,data,u8,{config['lcd_on']}",
+        f"tft_on,data,u8,{config['tft_on']}",
         f"led_on,data,u8,{config['led_on']}",
         f"keypad_on,data,u8,{config['keypad_on']}",
         f"nfc_reader,data,string,{config['nfc_reader']}",
