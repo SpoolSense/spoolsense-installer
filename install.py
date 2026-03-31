@@ -711,8 +711,8 @@ def install_middleware(config_yaml: str) -> None:
         print(f"    {MIDDLEWARE_DIR} and running the installer again.")
         sys.exit(1)
 
-    # Write config
-    config_path = os.path.join(MIDDLEWARE_DIR, "middleware", "config.yaml")
+    # Write config — middleware expects config at ~/SpoolSense/config.yaml
+    config_path = os.path.join(MIDDLEWARE_DIR, "config.yaml")
     if os.path.exists(config_path):
         print(f"  ⚠  Existing config found at {config_path}")
         if not ask_yesno("  Overwrite?", default=False):
@@ -974,7 +974,7 @@ def main() -> None:
             print(f"  Device ID:  Shown on the landing page (needed for middleware config)")
         if mode in ("both", "middleware"):
             print(f"  Middleware: {C.CYAN}systemctl status spoolsense{C.GREEN}")
-            print(f"  Config:     {C.CYAN}~/SpoolSense/middleware/config.yaml{C.GREEN}")
+            print(f"  Config:     {C.CYAN}~/SpoolSense/config.yaml{C.GREEN}")
             print(f"  {C.YELLOW}Remember:{C.RESET}{C.GREEN} Replace YOUR_DEVICE_ID in config.yaml with")
             print(f"  the device ID from {C.CYAN}http://spoolsense.local{C.GREEN}")
     print("")
