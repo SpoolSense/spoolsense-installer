@@ -499,7 +499,7 @@ def verify_flash(port: Optional[str], board_key: str) -> bool:
 
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-    except FileNotFoundError:
+    except (FileNotFoundError, OSError):
         cmd[0] = sys.executable
         cmd.insert(1, "-m")
         cmd.insert(2, "esptool")
@@ -601,7 +601,7 @@ def flash_firmware(port: Optional[str], board_key: str, firmware_bin: bytes, nvs
 
         try:
             result = subprocess.run(cmd, timeout=120)
-        except FileNotFoundError:
+        except (FileNotFoundError, OSError):
             cmd[0] = sys.executable
             cmd.insert(1, "-m")
             cmd.insert(2, "esptool")
