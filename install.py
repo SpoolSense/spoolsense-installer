@@ -224,6 +224,22 @@ def collect_scanner_config() -> Dict[str, Union[str, int]]:
         print("  The installer cannot safely flash untested board configurations.")
         sys.exit(0)
 
+    def validate_mdns_hostname(value: str) -> Optional[str]:
+        v = value.strip().lower()
+        if not v:
+            return None  # empty = use default "spoolsense"
+        if len(v) > 32:
+            return "Max 32 characters"
+        if not all(c.isalnum() or c == "-" for c in v):
+            return "Only lowercase letters, numbers, and hyphens"
+        if v[0] == "-" or v[-1] == "-":
+            return "Cannot start or end with a hyphen"
+        return None
+
+    hostname = ask("mDNS hostname (e.g. spoolsense-lane1)", default="spoolsense",
+                   validate=validate_mdns_hostname)
+    hostname = hostname.strip().lower() or "spoolsense"
+
     wifi_ssid = ask("WiFi SSID", validate=validate_ssid)
     wifi_pass = ask("WiFi Password", password=True, validate=validate_not_empty)
     mqtt_host = ask("MQTT broker host", validate=validate_host)
@@ -265,6 +281,7 @@ def collect_scanner_config() -> Dict[str, Union[str, int]]:
 
     return {
         "board": board,
+        "hostname": hostname,
         "wifi_ssid": wifi_ssid,
         "wifi_pass": wifi_pass,
         "mqtt_host": mqtt_host,
@@ -375,6 +392,7 @@ def generate_nvs_csv(config: Dict[str, Union[str, int]]) -> str:
         f"led_on,data,u8,{config['led_on']}",
         f"keypad_on,data,u8,{config['keypad_on']}",
         f"nfc_reader,data,string,{config['nfc_reader']}",
+        f"hostname,data,string,{config['hostname']}",
         f"moonraker_url,data,string,{config['moonraker_url']}",
     ]
     return "\n".join(lines) + "\n"
@@ -969,14 +987,15 @@ def main() -> None:
     else:
         print(f"  {C.BOLD}SpoolSense is installed!{C.RESET}{C.GREEN}")
         print("")
+        hn = scanner_config.get("hostname", "spoolsense") if scanner_config else "spoolsense"
         if mode in ("both", "scanner"):
-            print(f"  Scanner:    {C.CYAN}http://spoolsense.local{C.GREEN}")
+            print(f"  Scanner:    {C.CYAN}http://{hn}.local{C.GREEN}")
             print(f"  Device ID:  Shown on the landing page (needed for middleware config)")
         if mode in ("both", "middleware"):
             print(f"  Middleware: {C.CYAN}systemctl status spoolsense{C.GREEN}")
             print(f"  Config:     {C.CYAN}~/SpoolSense/middleware/config.yaml{C.GREEN}")
             print(f"  {C.YELLOW}Remember:{C.RESET}{C.GREEN} Replace YOUR_DEVICE_ID in config.yaml with")
-            print(f"  the device ID from {C.CYAN}http://spoolsense.local{C.GREEN}")
+            print(f"  the device ID from {C.CYAN}http://{hn}.local{C.GREEN}")
     print("")
     print(f"  Tap a spool to test.{C.RESET}")
     print(f"{C.GREEN}══════════════════════════════════════════{C.RESET}")
