@@ -987,14 +987,15 @@ def main() -> None:
     else:
         print(f"  {C.BOLD}SpoolSense is installed!{C.RESET}{C.GREEN}")
         print("")
+        hn = scanner_config.get("hostname", "spoolsense") if scanner_config else "spoolsense"
         if mode in ("both", "scanner"):
-            print(f"  Scanner:    {C.CYAN}http://spoolsense.local{C.GREEN}")
+            print(f"  Scanner:    {C.CYAN}http://{hn}.local{C.GREEN}")
             print(f"  Device ID:  Shown on the landing page (needed for middleware config)")
         if mode in ("both", "middleware"):
             print(f"  Middleware: {C.CYAN}systemctl status spoolsense{C.GREEN}")
             print(f"  Config:     {C.CYAN}~/SpoolSense/middleware/config.yaml{C.GREEN}")
             print(f"  {C.YELLOW}Remember:{C.RESET}{C.GREEN} Replace YOUR_DEVICE_ID in config.yaml with")
-            print(f"  the device ID from {C.CYAN}http://spoolsense.local{C.GREEN}")
+            print(f"  the device ID from {C.CYAN}http://{hn}.local{C.GREEN}")
     print("")
     print(f"  Tap a spool to test.{C.RESET}")
     print(f"{C.GREEN}══════════════════════════════════════════{C.RESET}")
