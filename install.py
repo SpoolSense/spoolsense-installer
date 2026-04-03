@@ -373,29 +373,43 @@ def collect_middleware_config() -> Dict[str, Union[str, List[str]]]:
 # ─── NVS partition generation ─────────────────────────────────────────────────
 
 def generate_nvs_csv(config: Dict[str, Union[str, int]]) -> str:
-    """Generate NVS partition CSV from scanner config dict."""
-    lines = [
-        "key,type,encoding,value",
-        "spoolsense,namespace,,",
-        f"wifi_ssid,data,string,{config['wifi_ssid']}",
-        f"wifi_pass,data,string,{config['wifi_pass']}",
-        f"mqtt_host,data,string,{config['mqtt_host']}",
-        f"mqtt_port,data,u16,{config['mqtt_port']}",
-        f"mqtt_user,data,string,{config['mqtt_user']}",
-        f"mqtt_pass,data,string,{config['mqtt_pass']}",
-        f"mqtt_prefix,data,string,{config['mqtt_prefix']}",
-        f"spoolman_on,data,u8,{config['spoolman_on']}",
-        f"spoolman_url,data,string,{config['spoolman_url']}",
-        f"auto_mode,data,u8,{config['auto_mode']}",
-        f"lcd_on,data,u8,{config['lcd_on']}",
-        f"tft_on,data,u8,{config['tft_on']}",
-        f"led_on,data,u8,{config['led_on']}",
-        f"keypad_on,data,u8,{config['keypad_on']}",
-        f"nfc_reader,data,string,{config['nfc_reader']}",
-        f"hostname,data,string,{config['hostname']}",
-        f"moonraker_url,data,string,{config['moonraker_url']}",
+    """Generate NVS partition CSV from scanner config dict.
+
+    Uses csv.writer to properly escape values containing commas, quotes,
+    or other special characters that would corrupt the NVS CSV structure.
+    """
+    import csv
+    import io
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    writer.writerow(["key", "type", "encoding", "value"])
+    writer.writerow(["spoolsense", "namespace", "", ""])
+
+    rows = [
+        ("wifi_ssid", "data", "string", config["wifi_ssid"]),
+        ("wifi_pass", "data", "string", config["wifi_pass"]),
+        ("mqtt_host", "data", "string", config["mqtt_host"]),
+        ("mqtt_port", "data", "u16", config["mqtt_port"]),
+        ("mqtt_user", "data", "string", config["mqtt_user"]),
+        ("mqtt_pass", "data", "string", config["mqtt_pass"]),
+        ("mqtt_prefix", "data", "string", config["mqtt_prefix"]),
+        ("spoolman_on", "data", "u8", config["spoolman_on"]),
+        ("spoolman_url", "data", "string", config["spoolman_url"]),
+        ("auto_mode", "data", "u8", config["auto_mode"]),
+        ("lcd_on", "data", "u8", config["lcd_on"]),
+        ("tft_on", "data", "u8", config["tft_on"]),
+        ("led_on", "data", "u8", config["led_on"]),
+        ("keypad_on", "data", "u8", config["keypad_on"]),
+        ("nfc_reader", "data", "string", config["nfc_reader"]),
+        ("hostname", "data", "string", config["hostname"]),
+        ("moonraker_url", "data", "string", config["moonraker_url"]),
     ]
-    return "\n".join(lines) + "\n"
+    for row in rows:
+        writer.writerow(row)
+
+    return output.getvalue()
 
 
 def generate_nvs_bin(csv_content: str, output_path: str, size: int = 0x5000) -> str:
