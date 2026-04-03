@@ -448,13 +448,18 @@ def download_asset(release: dict, suffix: str) -> bytes:
     for asset in release.get("assets", []):
         if asset["name"] == target_name:
             url = asset["browser_download_url"]
+            expected_size = asset.get("size", 0)
             print(f"  Downloading {asset['name']}...")
             try:
                 with urllib.request.urlopen(url, timeout=60) as resp:
-                    return resp.read()
+                    data = resp.read()
             except Exception as e:
                 print(f"\n  ✗ Download failed: {e}")
                 sys.exit(1)
+            if expected_size and len(data) != expected_size:
+                print(f"\n  ✗ Download incomplete: got {len(data)} bytes, expected {expected_size}")
+                sys.exit(1)
+            return data
 
     print(f"\n  ✗ No firmware binary found for '{suffix}' in release {release.get('tag_name', '?')}")
     print("    Available assets:")
@@ -858,9 +863,13 @@ def main() -> None:
         bootloader_bin = None
         for asset in release.get("assets", []):
             if asset["name"] == bootloader_name:
+                expected = asset.get("size", 0)
                 print(f"  Downloading {bootloader_name}...")
                 with urllib.request.urlopen(asset["browser_download_url"], timeout=30) as resp:
                     bootloader_bin = resp.read()
+                if expected and len(bootloader_bin) != expected:
+                    print(f"\n  ✗ Bootloader download incomplete: got {len(bootloader_bin)} bytes, expected {expected}")
+                    sys.exit(1)
                 print(f"  {C.GREEN}✓{C.RESET} Bootloader downloaded ({len(bootloader_bin)} bytes)")
                 break
         if bootloader_bin is None:
@@ -872,9 +881,13 @@ def main() -> None:
         partitions_bin = None
         for asset in release.get("assets", []):
             if asset["name"] == partitions_name:
+                expected = asset.get("size", 0)
                 print(f"  Downloading {partitions_name}...")
                 with urllib.request.urlopen(asset["browser_download_url"], timeout=30) as resp:
                     partitions_bin = resp.read()
+                if expected and len(partitions_bin) != expected:
+                    print(f"\n  ✗ Partition table download incomplete: got {len(partitions_bin)} bytes, expected {expected}")
+                    sys.exit(1)
                 print(f"  {C.GREEN}✓{C.RESET} Partition table downloaded ({len(partitions_bin)} bytes)")
                 break
         if partitions_bin is None:
