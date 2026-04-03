@@ -382,7 +382,7 @@ def generate_nvs_csv(config: Dict[str, Union[str, int]]) -> str:
     import io
 
     output = io.StringIO()
-    writer = csv.writer(output)
+    writer = csv.writer(output, lineterminator="\n")
 
     writer.writerow(["key", "type", "encoding", "value"])
     writer.writerow(["spoolsense", "namespace", "", ""])
@@ -415,7 +415,7 @@ def generate_nvs_csv(config: Dict[str, Union[str, int]]) -> str:
 def generate_nvs_bin(csv_content: str, output_path: str, size: int = 0x5000) -> str:
     """Generate NVS partition binary using esptool's nvs_partition_gen or a bundled version."""
     csv_path = output_path + ".csv"
-    with open(csv_path, "w") as f:
+    with open(csv_path, "w", newline="") as f:
         f.write(csv_content)
 
     # Try the bundled nvs_partition_gen first, then fall back to installed version
