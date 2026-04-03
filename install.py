@@ -455,22 +455,32 @@ def fetch_latest_release() -> dict:
         sys.exit(1)
 
 
-def download_asset(release: dict, suffix: str) -> bytes:
-    """Download a firmware asset matching the given suffix."""
-    # Match spoolsense_scanner_<suffix>.bin specifically, not partitions or other files
-    target_name = f"spoolsense_scanner_{suffix}.bin"
+def download_asset(release: dict, name: str = "", suffix: str = "") -> bytes:
+    """Download a release asset by exact name or firmware suffix.
+
+    Args:
+        release: GitHub release dict with 'assets' list
+        name: Exact asset filename (e.g. 'bootloader_esp32dev.bin')
+        suffix: Firmware suffix — expands to 'spoolsense_scanner_{suffix}.bin'
+    """
+    target_name = name or f"spoolsense_scanner_{suffix}.bin"
     for asset in release.get("assets", []):
         if asset["name"] == target_name:
             url = asset["browser_download_url"]
+            expected_size = asset.get("size", 0)
             print(f"  Downloading {asset['name']}...")
             try:
                 with urllib.request.urlopen(url, timeout=60) as resp:
-                    return resp.read()
+                    data = resp.read()
             except Exception as e:
                 print(f"\n  ✗ Download failed: {e}")
                 sys.exit(1)
+            if expected_size and len(data) != expected_size:
+                print(f"\n  ✗ Download incomplete: got {len(data)} bytes, expected {expected_size}")
+                sys.exit(1)
+            return data
 
-    print(f"\n  ✗ No firmware binary found for '{suffix}' in release {release.get('tag_name', '?')}")
+    print(f"\n  ✗ Asset '{target_name}' not found in release {release.get('tag_name', '?')}")
     print("    Available assets:")
     for asset in release.get("assets", []):
         print(f"      {asset['name']}")
@@ -864,36 +874,14 @@ def main() -> None:
         release = fetch_latest_release()
         board_key = scanner_config["board"]
         _, _, fw_suffix, _, _ = BOARDS[board_key]
-        firmware_bin = download_asset(release, fw_suffix)
+        firmware_bin = download_asset(release, suffix=fw_suffix)
         print(f"  {C.GREEN}✓{C.RESET} Firmware downloaded ({len(firmware_bin)} bytes)")
 
-        # Download matching bootloader
-        bootloader_name = f"bootloader_{fw_suffix}.bin"
-        bootloader_bin = None
-        for asset in release.get("assets", []):
-            if asset["name"] == bootloader_name:
-                print(f"  Downloading {bootloader_name}...")
-                with urllib.request.urlopen(asset["browser_download_url"], timeout=30) as resp:
-                    bootloader_bin = resp.read()
-                print(f"  {C.GREEN}✓{C.RESET} Bootloader downloaded ({len(bootloader_bin)} bytes)")
-                break
-        if bootloader_bin is None:
-            print(f"\n  ✗ Bootloader '{bootloader_name}' not found in release.")
-            sys.exit(1)
+        bootloader_bin = download_asset(release, name=f"bootloader_{fw_suffix}.bin")
+        print(f"  {C.GREEN}✓{C.RESET} Bootloader downloaded ({len(bootloader_bin)} bytes)")
 
-        # Download matching partition table
-        partitions_name = f"partitions_{fw_suffix}.bin"
-        partitions_bin = None
-        for asset in release.get("assets", []):
-            if asset["name"] == partitions_name:
-                print(f"  Downloading {partitions_name}...")
-                with urllib.request.urlopen(asset["browser_download_url"], timeout=30) as resp:
-                    partitions_bin = resp.read()
-                print(f"  {C.GREEN}✓{C.RESET} Partition table downloaded ({len(partitions_bin)} bytes)")
-                break
-        if partitions_bin is None:
-            print(f"\n  ✗ Partition table '{partitions_name}' not found in release.")
-            sys.exit(1)
+        partitions_bin = download_asset(release, name=f"partitions_{fw_suffix}.bin")
+        print(f"  {C.GREEN}✓{C.RESET} Partition table downloaded ({len(partitions_bin)} bytes)")
 
         # Generate NVS config partition
         print("  Generating NVS config partition...")
