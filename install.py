@@ -224,6 +224,22 @@ def collect_scanner_config() -> Dict[str, Union[str, int]]:
         print("  The installer cannot safely flash untested board configurations.")
         sys.exit(0)
 
+    def validate_mdns_hostname(value: str) -> Optional[str]:
+        v = value.strip().lower()
+        if not v:
+            return None  # empty = use default "spoolsense"
+        if len(v) > 32:
+            return "Max 32 characters"
+        if not all(c.isalnum() or c == "-" for c in v):
+            return "Only lowercase letters, numbers, and hyphens"
+        if v[0] == "-" or v[-1] == "-":
+            return "Cannot start or end with a hyphen"
+        return None
+
+    hostname = ask("mDNS hostname (e.g. spoolsense-lane1)", default="spoolsense",
+                   validate=validate_mdns_hostname)
+    hostname = hostname.strip().lower() or "spoolsense"
+
     wifi_ssid = ask("WiFi SSID", validate=validate_ssid)
     wifi_pass = ask("WiFi Password", password=True, validate=validate_not_empty)
     mqtt_host = ask("MQTT broker host", validate=validate_host)
@@ -265,6 +281,7 @@ def collect_scanner_config() -> Dict[str, Union[str, int]]:
 
     return {
         "board": board,
+        "hostname": hostname,
         "wifi_ssid": wifi_ssid,
         "wifi_pass": wifi_pass,
         "mqtt_host": mqtt_host,
@@ -356,34 +373,49 @@ def collect_middleware_config() -> Dict[str, Union[str, List[str]]]:
 # ─── NVS partition generation ─────────────────────────────────────────────────
 
 def generate_nvs_csv(config: Dict[str, Union[str, int]]) -> str:
-    """Generate NVS partition CSV from scanner config dict."""
-    lines = [
-        "key,type,encoding,value",
-        "spoolsense,namespace,,",
-        f"wifi_ssid,data,string,{config['wifi_ssid']}",
-        f"wifi_pass,data,string,{config['wifi_pass']}",
-        f"mqtt_host,data,string,{config['mqtt_host']}",
-        f"mqtt_port,data,u16,{config['mqtt_port']}",
-        f"mqtt_user,data,string,{config['mqtt_user']}",
-        f"mqtt_pass,data,string,{config['mqtt_pass']}",
-        f"mqtt_prefix,data,string,{config['mqtt_prefix']}",
-        f"spoolman_on,data,u8,{config['spoolman_on']}",
-        f"spoolman_url,data,string,{config['spoolman_url']}",
-        f"auto_mode,data,u8,{config['auto_mode']}",
-        f"lcd_on,data,u8,{config['lcd_on']}",
-        f"tft_on,data,u8,{config['tft_on']}",
-        f"led_on,data,u8,{config['led_on']}",
-        f"keypad_on,data,u8,{config['keypad_on']}",
-        f"nfc_reader,data,string,{config['nfc_reader']}",
-        f"moonraker_url,data,string,{config['moonraker_url']}",
+    """Generate NVS partition CSV from scanner config dict.
+
+    Uses csv.writer to properly escape values containing commas, quotes,
+    or other special characters that would corrupt the NVS CSV structure.
+    """
+    import csv
+    import io
+
+    output = io.StringIO()
+    writer = csv.writer(output, lineterminator="\n")
+
+    writer.writerow(["key", "type", "encoding", "value"])
+    writer.writerow(["spoolsense", "namespace", "", ""])
+
+    rows = [
+        ("wifi_ssid", "data", "string", config["wifi_ssid"]),
+        ("wifi_pass", "data", "string", config["wifi_pass"]),
+        ("mqtt_host", "data", "string", config["mqtt_host"]),
+        ("mqtt_port", "data", "u16", config["mqtt_port"]),
+        ("mqtt_user", "data", "string", config["mqtt_user"]),
+        ("mqtt_pass", "data", "string", config["mqtt_pass"]),
+        ("mqtt_prefix", "data", "string", config["mqtt_prefix"]),
+        ("spoolman_on", "data", "u8", config["spoolman_on"]),
+        ("spoolman_url", "data", "string", config["spoolman_url"]),
+        ("auto_mode", "data", "u8", config["auto_mode"]),
+        ("lcd_on", "data", "u8", config["lcd_on"]),
+        ("tft_on", "data", "u8", config["tft_on"]),
+        ("led_on", "data", "u8", config["led_on"]),
+        ("keypad_on", "data", "u8", config["keypad_on"]),
+        ("nfc_reader", "data", "string", config["nfc_reader"]),
+        ("hostname", "data", "string", config["hostname"]),
+        ("moonraker_url", "data", "string", config["moonraker_url"]),
     ]
-    return "\n".join(lines) + "\n"
+    for row in rows:
+        writer.writerow(row)
+
+    return output.getvalue()
 
 
 def generate_nvs_bin(csv_content: str, output_path: str, size: int = 0x5000) -> str:
     """Generate NVS partition binary using esptool's nvs_partition_gen or a bundled version."""
     csv_path = output_path + ".csv"
-    with open(csv_path, "w") as f:
+    with open(csv_path, "w", newline="") as f:
         f.write(csv_content)
 
     # Try the bundled nvs_partition_gen first, then fall back to installed version
@@ -423,22 +455,32 @@ def fetch_latest_release() -> dict:
         sys.exit(1)
 
 
-def download_asset(release: dict, suffix: str) -> bytes:
-    """Download a firmware asset matching the given suffix."""
-    # Match spoolsense_scanner_<suffix>.bin specifically, not partitions or other files
-    target_name = f"spoolsense_scanner_{suffix}.bin"
+def download_asset(release: dict, name: str = "", suffix: str = "") -> bytes:
+    """Download a release asset by exact name or firmware suffix.
+
+    Args:
+        release: GitHub release dict with 'assets' list
+        name: Exact asset filename (e.g. 'bootloader_esp32dev.bin')
+        suffix: Firmware suffix — expands to 'spoolsense_scanner_{suffix}.bin'
+    """
+    target_name = name or f"spoolsense_scanner_{suffix}.bin"
     for asset in release.get("assets", []):
         if asset["name"] == target_name:
             url = asset["browser_download_url"]
+            expected_size = asset.get("size", 0)
             print(f"  Downloading {asset['name']}...")
             try:
                 with urllib.request.urlopen(url, timeout=60) as resp:
-                    return resp.read()
+                    data = resp.read()
             except Exception as e:
                 print(f"\n  ✗ Download failed: {e}")
                 sys.exit(1)
+            if expected_size and len(data) != expected_size:
+                print(f"\n  ✗ Download incomplete: got {len(data)} bytes, expected {expected_size}")
+                sys.exit(1)
+            return data
 
-    print(f"\n  ✗ No firmware binary found for '{suffix}' in release {release.get('tag_name', '?')}")
+    print(f"\n  ✗ Asset '{target_name}' not found in release {release.get('tag_name', '?')}")
     print("    Available assets:")
     for asset in release.get("assets", []):
         print(f"      {asset['name']}")
@@ -832,36 +874,14 @@ def main() -> None:
         release = fetch_latest_release()
         board_key = scanner_config["board"]
         _, _, fw_suffix, _, _ = BOARDS[board_key]
-        firmware_bin = download_asset(release, fw_suffix)
+        firmware_bin = download_asset(release, suffix=fw_suffix)
         print(f"  {C.GREEN}✓{C.RESET} Firmware downloaded ({len(firmware_bin)} bytes)")
 
-        # Download matching bootloader
-        bootloader_name = f"bootloader_{fw_suffix}.bin"
-        bootloader_bin = None
-        for asset in release.get("assets", []):
-            if asset["name"] == bootloader_name:
-                print(f"  Downloading {bootloader_name}...")
-                with urllib.request.urlopen(asset["browser_download_url"], timeout=30) as resp:
-                    bootloader_bin = resp.read()
-                print(f"  {C.GREEN}✓{C.RESET} Bootloader downloaded ({len(bootloader_bin)} bytes)")
-                break
-        if bootloader_bin is None:
-            print(f"\n  ✗ Bootloader '{bootloader_name}' not found in release.")
-            sys.exit(1)
+        bootloader_bin = download_asset(release, name=f"bootloader_{fw_suffix}.bin")
+        print(f"  {C.GREEN}✓{C.RESET} Bootloader downloaded ({len(bootloader_bin)} bytes)")
 
-        # Download matching partition table
-        partitions_name = f"partitions_{fw_suffix}.bin"
-        partitions_bin = None
-        for asset in release.get("assets", []):
-            if asset["name"] == partitions_name:
-                print(f"  Downloading {partitions_name}...")
-                with urllib.request.urlopen(asset["browser_download_url"], timeout=30) as resp:
-                    partitions_bin = resp.read()
-                print(f"  {C.GREEN}✓{C.RESET} Partition table downloaded ({len(partitions_bin)} bytes)")
-                break
-        if partitions_bin is None:
-            print(f"\n  ✗ Partition table '{partitions_name}' not found in release.")
-            sys.exit(1)
+        partitions_bin = download_asset(release, name=f"partitions_{fw_suffix}.bin")
+        print(f"  {C.GREEN}✓{C.RESET} Partition table downloaded ({len(partitions_bin)} bytes)")
 
         # Generate NVS config partition
         print("  Generating NVS config partition...")
@@ -969,14 +989,15 @@ def main() -> None:
     else:
         print(f"  {C.BOLD}SpoolSense is installed!{C.RESET}{C.GREEN}")
         print("")
+        hn = scanner_config.get("hostname", "spoolsense") if scanner_config else "spoolsense"
         if mode in ("both", "scanner"):
-            print(f"  Scanner:    {C.CYAN}http://spoolsense.local{C.GREEN}")
+            print(f"  Scanner:    {C.CYAN}http://{hn}.local{C.GREEN}")
             print(f"  Device ID:  Shown on the landing page (needed for middleware config)")
         if mode in ("both", "middleware"):
             print(f"  Middleware: {C.CYAN}systemctl status spoolsense{C.GREEN}")
             print(f"  Config:     {C.CYAN}~/SpoolSense/config.yaml{C.GREEN}")
             print(f"  {C.YELLOW}Remember:{C.RESET}{C.GREEN} Replace YOUR_DEVICE_ID in config.yaml with")
-            print(f"  the device ID from {C.CYAN}http://spoolsense.local{C.GREEN}")
+            print(f"  the device ID from {C.CYAN}http://{hn}.local{C.GREEN}")
     print("")
     print(f"  Tap a spool to test.{C.RESET}")
     print(f"{C.GREEN}══════════════════════════════════════════{C.RESET}")
