@@ -57,4 +57,4 @@ pip3 install --quiet --break-system-packages esptool esp-idf-nvs-partition-gen 2
 
 # Run the installer
 echo ""
-python3 "$INSTALL_DIR/install.py" "$@"
+python3 "$INSTALL_DIR/install.py" "$@" < /dev/tty

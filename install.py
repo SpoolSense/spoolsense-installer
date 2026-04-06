@@ -54,6 +54,7 @@ class C:
 BOARDS = {
     "esp32dev": ("ESP32-WROOM DevKit (4MB)", "esp32", "esp32dev", 4 * 1024 * 1024, 0x1000),
     "esp32s3zero": ("ESP32-S3-Zero by Waveshare (4MB)", "esp32s3", "esp32s3zero", 4 * 1024 * 1024, 0x0),
+    "esp32s3devkitc": ("ESP32-S3-DevKitC-1-N16R8 (16MB+8MB PSRAM)", "esp32s3", "esp32s3devkitc", 16 * 1024 * 1024, 0x0),
 }
 
 
@@ -215,6 +216,7 @@ def collect_scanner_config() -> Dict[str, Union[str, int]]:
     board = ask_choice("Scanner board:", {
         "esp32dev": "ESP32-WROOM DevKit (4MB) — most common",
         "esp32s3zero": "ESP32-S3-Zero by Waveshare (4MB)",
+        "esp32s3devkitc": "ESP32-S3-DevKitC-1-N16R8 (16MB + 8MB PSRAM)",
         "other": "Other / not sure",
     })
 
@@ -262,10 +264,15 @@ def collect_scanner_config() -> Dict[str, Union[str, int]]:
     print(f"\n{C.CYAN}── Optional Hardware ──────────────────{C.RESET}\n")
     lcd_on = ask_yesno("16x2 I2C LCD display attached?", default=False)
     tft_on = False
+    tft_driver = "st7789"
     if not lcd_on:
-        tft_on = ask_yesno("TFT display attached (ST7789 240x240)?", default=False)
+        tft_on = ask_yesno("TFT display attached (240x240)?", default=False)
     if tft_on:
-        lcd_on = False  # mutual exclusion — shared GPIO 22/23 on WROOM
+        lcd_on = False
+        tft_driver = ask_choice("TFT display driver:", {
+            "st7789": "ST7789 (square 240x240)",
+            "gc9a01": "GC9A01 (round 240x240)",
+        })
     led_on = ask_yesno("Status LED attached?", default=True)
     keypad_on = ask_yesno("3x4 matrix keypad attached?", default=False)
     nfc_reader = ask("NFC reader model", default="pn5180",
@@ -294,6 +301,7 @@ def collect_scanner_config() -> Dict[str, Union[str, int]]:
         "auto_mode": int(auto_mode),
         "lcd_on": 1 if lcd_on else 0,
         "tft_on": 1 if tft_on else 0,
+        "tft_driver": tft_driver,
         "led_on": 1 if led_on else 0,
         "keypad_on": 1 if keypad_on else 0,
         "nfc_reader": nfc_reader,
@@ -400,6 +408,7 @@ def generate_nvs_csv(config: Dict[str, Union[str, int]]) -> str:
         ("auto_mode", "data", "u8", config["auto_mode"]),
         ("lcd_on", "data", "u8", config["lcd_on"]),
         ("tft_on", "data", "u8", config["tft_on"]),
+        ("tft_driver", "data", "string", config["tft_driver"]),
         ("led_on", "data", "u8", config["led_on"]),
         ("keypad_on", "data", "u8", config["keypad_on"]),
         ("nfc_reader", "data", "string", config["nfc_reader"]),
@@ -753,8 +762,8 @@ def install_middleware(config_yaml: str) -> None:
         print(f"    {MIDDLEWARE_DIR} and running the installer again.")
         sys.exit(1)
 
-    # Write config
-    config_path = os.path.join(MIDDLEWARE_DIR, "middleware", "config.yaml")
+    # Write config — middleware expects config at ~/SpoolSense/config.yaml
+    config_path = os.path.join(MIDDLEWARE_DIR, "config.yaml")
     if os.path.exists(config_path):
         print(f"  ⚠  Existing config found at {config_path}")
         if not ask_yesno("  Overwrite?", default=False):
@@ -995,7 +1004,7 @@ def main() -> None:
             print(f"  Device ID:  Shown on the landing page (needed for middleware config)")
         if mode in ("both", "middleware"):
             print(f"  Middleware: {C.CYAN}systemctl status spoolsense{C.GREEN}")
-            print(f"  Config:     {C.CYAN}~/SpoolSense/middleware/config.yaml{C.GREEN}")
+            print(f"  Config:     {C.CYAN}~/SpoolSense/config.yaml{C.GREEN}")
             print(f"  {C.YELLOW}Remember:{C.RESET}{C.GREEN} Replace YOUR_DEVICE_ID in config.yaml with")
             print(f"  the device ID from {C.CYAN}http://{hn}.local{C.GREEN}")
     print("")
