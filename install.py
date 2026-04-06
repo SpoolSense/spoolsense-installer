@@ -647,7 +647,8 @@ def setup_moonraker_spoolman(spoolman_url: str) -> None:
     with open(MOONRAKER_CONF_PATH, "r") as f:
         content = f.read()
 
-    if "[spoolman]" in content:
+    import re
+    if re.search(r'^\[spoolman\]\s*$', content, re.MULTILINE):
         print(f"  {C.GREEN}✓{C.RESET} Moonraker Spoolman config already exists — skipping")
         return
 
