@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.5] - 2026-04-06
+
+### Added
+- **Moonraker Spoolman config** — installer offers to add `[spoolman]` section to `moonraker.conf` when Spoolman is enabled. Required for real-time filament usage tracking on UID-only, TigerTag, and OpenSpool tags. Skips if already configured, handles missing file and permission errors gracefully. (#28)
+
+---
+
 ## [1.2.4] - 2026-03-28
 
 ### Added
