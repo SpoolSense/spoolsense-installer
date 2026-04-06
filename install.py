@@ -625,6 +625,63 @@ def setup_spoolman_extra_fields(spoolman_url: str) -> None:
             print(f"  {C.YELLOW}!{C.RESET} Could not create {entity_type}.{key}: {e}")
 
 
+MOONRAKER_CONF_PATH = os.path.expanduser("~/printer_data/config/moonraker.conf")
+
+
+def setup_moonraker_spoolman(spoolman_url: str) -> None:
+    """
+    Offer to add [spoolman] section to moonraker.conf if not already present.
+
+    Moonraker's built-in Spoolman integration tracks filament usage in real-time
+    during prints. Without this, filament tracking won't work for UID-only tags.
+    """
+    if not os.path.exists(MOONRAKER_CONF_PATH):
+        print(f"  {C.YELLOW}!{C.RESET} moonraker.conf not found at {MOONRAKER_CONF_PATH}")
+        print(f"    If your moonraker.conf is in a different location, add this manually:")
+        print(f"    [spoolman]")
+        print(f"    server: {spoolman_url}")
+        print(f"    sync_rate: 5")
+        return
+
+    # Check if [spoolman] already exists
+    with open(MOONRAKER_CONF_PATH, "r") as f:
+        content = f.read()
+
+    if "[spoolman]" in content:
+        print(f"  {C.GREEN}✓{C.RESET} Moonraker Spoolman config already exists — skipping")
+        return
+
+    # Explain and prompt
+    print(f"\n  {C.YELLOW}Moonraker Spoolman Integration:{C.RESET}")
+    print(f"  Moonraker can automatically track filament usage during prints")
+    print(f"  and sync it to Spoolman in real-time. This is required for")
+    print(f"  filament tracking on UID-only, TigerTag, and OpenSpool tags.\n")
+
+    if not ask_yesno("Add [spoolman] to moonraker.conf?", default=True):
+        print(f"  Skipped. Without this, filament usage tracking will only work")
+        print(f"  for OpenPrintTag and OpenTag3D tags (which store weight on the tag).")
+        print(f"  UID-only, TigerTag, and OpenSpool tags will not track usage.")
+        print(f"  You can add it manually later.")
+        return
+
+    # Append to moonraker.conf
+    spoolman_block = f"\n[spoolman]\nserver: {spoolman_url}\nsync_rate: 5\n"
+    try:
+        with open(MOONRAKER_CONF_PATH, "a") as f:
+            f.write(spoolman_block)
+        print(f"  {C.GREEN}✓{C.RESET} Added [spoolman] to {MOONRAKER_CONF_PATH}")
+        print(f"\n  {C.YELLOW}Important:{C.RESET} Restart Moonraker for this change to take effect:")
+        print(f"    sudo systemctl restart moonraker\n")
+    except PermissionError:
+        print(f"  {C.RED}✗{C.RESET} Permission denied writing to {MOONRAKER_CONF_PATH}")
+        print(f"    Add this manually:")
+        print(f"    [spoolman]")
+        print(f"    server: {spoolman_url}")
+        print(f"    sync_rate: 5")
+    except Exception as e:
+        print(f"  {C.RED}✗{C.RESET} Failed to write moonraker.conf: {e}")
+
+
 def flash_firmware(port: Optional[str], board_key: str, firmware_bin: bytes, nvs_bin_path: str, partitions_bin_path: str, bootloader_bin_path: str) -> None:
     """Flash bootloader + partition table + NVS config + firmware to the ESP32."""
     print(f"\n  Flashing firmware...")
@@ -986,6 +1043,11 @@ def main() -> None:
                 print(f"\n  {C.YELLOW}Important:{C.RESET} Add this line to your printer.cfg:")
                 print(f"    [include spoolsense.cfg]")
                 print(f"  Then restart Klipper.\n")
+
+    # ── Moonraker Spoolman config ────────────────────────────────────────────
+    spoolman_url = scanner_config.get("spoolman_url") or ""
+    if scanner_config.get("spoolman_on") and spoolman_url:
+        setup_moonraker_spoolman(spoolman_url)
 
     # ── Done ──────────────────────────────────────────────────────────────────
     print("")
