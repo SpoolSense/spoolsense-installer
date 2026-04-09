@@ -2,3 +2,7 @@ __pycache__/
 *.pyc
 serial.log
 TODO.md
+.mcp.json
+ollama_suggestions.md
+.cocoindex_code/
+.mex/
