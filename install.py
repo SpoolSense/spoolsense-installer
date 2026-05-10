@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-__version__ = "1.2.5"
+__version__ = "1.2.6"
 """
 SpoolSense Installer — interactive CLI for scanner firmware + middleware setup.
 
