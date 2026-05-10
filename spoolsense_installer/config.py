@@ -14,6 +14,7 @@ def collect_scanner_config() -> Dict[str, Union[str, int]]:
     board = ask_choice("Scanner board:", {
         "esp32dev": "ESP32-WROOM DevKit (4MB) — most common",
         "esp32s3zero": "ESP32-S3-Zero by Waveshare (4MB)",
+        "esp32c3": "ESP32-C3-DevKitM-1 (4MB)",
         "esp32s3devkitc": "ESP32-S3-DevKitC-1-N16R8 (16MB + 8MB PSRAM)",
         "other": "Other / not sure",
     })
