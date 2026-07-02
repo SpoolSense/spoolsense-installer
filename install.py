@@ -13,23 +13,28 @@ the middleware (choose "Middleware only").
 Note: SpoolSense middleware must run on the printer host.
 """
 
+import argparse
 import os
 import sys
 import tempfile
 
 from spoolsense_installer.constants import C, BOARDS, MIDDLEWARE_DIR
-from spoolsense_installer.ui import ask_choice, ask_yesno
+from spoolsense_installer.ui import ask_choice, ask_yesno, ask, validate_url
 from spoolsense_installer.config import collect_scanner_config, collect_middleware_config, collect_middleware_mqtt_settings
 from spoolsense_installer.nvs import generate_nvs_csv, generate_nvs_bin
 from spoolsense_installer.firmware import fetch_latest_release, download_asset, detect_usb_port, verify_flash, flash_firmware
 from spoolsense_installer.middleware import generate_config as generate_middleware_config, install as install_middleware
-from spoolsense_installer.spoolman import setup_extra_fields, setup_moonraker_spoolman
+from spoolsense_installer.spoolman import setup_extra_fields, setup_moonraker_spoolman, print_failed_fields_summary
 
 
 # ── Install flow orchestration ───────────────────────────────────────────────
 
-def run_scanner_install(scanner_config: dict) -> None:
-    """Download firmware, generate NVS, flash the ESP32."""
+def run_scanner_install(scanner_config: dict) -> list:
+    """Download firmware, generate NVS, flash the ESP32.
+
+    Returns the list of Spoolman extra fields that could not be created (empty
+    if Spoolman setup was skipped or fully succeeded).
+    """
     board_key = scanner_config["board"]
     _, _, fw_suffix, _, _ = BOARDS[board_key]
 
@@ -66,7 +71,8 @@ def run_scanner_install(scanner_config: dict) -> None:
     spoolman_url = scanner_config.get("spoolman_url") or ""
     if scanner_config.get("spoolman_on") and spoolman_url:
         print(f"\n{C.CYAN}── Spoolman Setup ─────────────────────{C.RESET}\n")
-        setup_extra_fields(spoolman_url)
+        return setup_extra_fields(spoolman_url)
+    return []
 
 
 def run_config_only(scanner_config: dict) -> None:
@@ -133,7 +139,44 @@ def print_completion_message(mode: str, scanner_config: dict) -> None:
 
 # ── Entry point ──────────────────────────────────────────────────────────────
 
+def run_setup_fields(spoolman_url: str) -> int:
+    """Re-run only Spoolman extra-field creation. Returns a process exit code."""
+    if not spoolman_url:
+        spoolman_url = ask("Spoolman URL (e.g. http://localhost:7912)", validate=validate_url)
+
+    print(f"\n{C.CYAN}── Spoolman Field Setup ───────────────{C.RESET}\n")
+    failed = setup_extra_fields(spoolman_url)
+    if failed:
+        print_failed_fields_summary(spoolman_url, failed)
+        return 1
+    print(f"\n  {C.GREEN}✓{C.RESET} All Spoolman extra fields are present.")
+    return 0
+
+
+def parse_args(argv=None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="install.py",
+        description="SpoolSense installer — scanner firmware + middleware setup.",
+    )
+    parser.add_argument(
+        "--setup-fields",
+        action="store_true",
+        help="Only (re)create the required Spoolman extra fields, then exit.",
+    )
+    parser.add_argument(
+        "--spoolman-url",
+        default="",
+        help="Spoolman base URL (e.g. http://localhost:7912). Used with --setup-fields.",
+    )
+    return parser.parse_args(argv)
+
+
 def main() -> None:
+    args = parse_args()
+
+    if args.setup_fields:
+        sys.exit(run_setup_fields(args.spoolman_url))
+
     if sys.version_info < (3, 9):
         print(f"\n  {C.RED}✗ Python 3.9 or newer is required.{C.RESET}")
         print(f"    You have: Python {sys.version_info.major}.{sys.version_info.minor}")
@@ -174,8 +217,9 @@ def main() -> None:
             scanner_config = collect_middleware_mqtt_settings()
         middleware_config = collect_middleware_config()
 
+    failed_fields = []
     if mode in ("both", "scanner"):
-        run_scanner_install(scanner_config)
+        failed_fields = run_scanner_install(scanner_config)
 
     if mode == "config":
         run_config_only(scanner_config)
@@ -189,6 +233,9 @@ def main() -> None:
         setup_moonraker_spoolman(spoolman_url)
 
     print_completion_message(mode, scanner_config)
+
+    # Print last so a field-creation failure is the final thing the user sees.
+    print_failed_fields_summary(spoolman_url, failed_fields)
 
 
 if __name__ == "__main__":

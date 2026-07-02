@@ -3,51 +3,130 @@
 import json
 import os
 import re
+import time
 import urllib.request
 
 from .constants import C, MOONRAKER_CONF_PATH
 from .ui import ask_yesno
 
+# Extra fields the scanner/middleware rely on. nfc_id enables spool lookup by tag
+# UID; tag_format tracks which NFC protocol was used; the filament fields carry
+# drying metadata written back from tags.
+EXTRA_FIELDS = [
+    ("spool", "nfc_id", "text", "NFC Tag ID"),
+    ("spool", "tag_format", "text", "Tag Format"),
+    ("filament", "aspect", "text", "Aspect/Finish"),
+    ("filament", "dry_temp", "text", "Dry Temp (°C)"),
+    ("filament", "dry_time_hours", "text", "Dry Time (hrs)"),
+]
 
-def setup_extra_fields(spoolman_url: str) -> None:
+
+def _urlopen_with_retry(req, *, attempts: int = 3, base_delay: float = 1.0, timeout: int = 10):
+    """Open a request, retrying on any error with exponential backoff.
+
+    Returns the response body bytes and status. Re-raises the last exception if
+    every attempt fails. Spoolman may still be starting during install, so a few
+    retries turn a transient connection error into a success.
+    """
+    last_exc = None
+    for attempt in range(attempts):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                # urlopen only returns for 2xx; 4xx/5xx raise HTTPError.
+                return resp.read(), resp.status
+        except Exception as e:  # noqa: BLE001 — retry on anything (URLError, timeout, HTTPError)
+            last_exc = e
+            if attempt < attempts - 1:
+                time.sleep(base_delay * (2 ** attempt))
+    raise last_exc
+
+
+def _wait_for_spoolman(spoolman_url: str) -> bool:
+    """Poll Spoolman until it responds, or a ~45s budget is exhausted.
+
+    Returns True once reachable, False if it never comes up. Handles the common
+    case where Spoolman is not fully started at the moment the installer runs.
+    """
+    delays = [1, 2, 4, 8, 15, 15]  # cumulative ~45s across 6 attempts
+    for i, delay in enumerate(delays):
+        try:
+            req = urllib.request.Request(f"{spoolman_url}/api/v1/field/spool")
+            with urllib.request.urlopen(req, timeout=10):
+                return True
+        except Exception:  # noqa: BLE001
+            if i < len(delays) - 1:
+                print(f"  {C.DIM}… waiting for Spoolman at {spoolman_url} ({i + 1}/{len(delays)}){C.RESET}")
+                time.sleep(delay)
+    return False
+
+
+def setup_extra_fields(spoolman_url: str) -> list:
     """Create extra fields in Spoolman for tag data enrichment.
 
-    Text fields allow the scanner to write tag UID, format, and filament properties.
-    nfc_id enables spool lookup by tag UID; tag_format tracks which NFC protocol was used.
+    Returns a list of ``(entity_type, key)`` tuples that could NOT be created.
+    An empty list means every field exists or was created successfully. Nothing
+    is silently skipped: if Spoolman is unreachable, every field is reported as
+    failed so the caller can surface a prominent warning.
     """
-    fields = [
-        ("spool", "nfc_id", "text", "NFC Tag ID"),
-        ("spool", "tag_format", "text", "Tag Format"),
-        ("filament", "aspect", "text", "Aspect/Finish"),
-        ("filament", "dry_temp", "text", "Dry Temp (°C)"),
-        ("filament", "dry_time_hours", "text", "Dry Time (hrs)"),
-    ]
+    if not _wait_for_spoolman(spoolman_url):
+        print(f"  {C.RED}✗{C.RESET} Spoolman not reachable at {spoolman_url} — could not create fields")
+        return [(entity_type, key) for entity_type, key, _, _ in EXTRA_FIELDS]
 
-    for entity_type, key, field_type, display_name in fields:
+    failed = []
+    for entity_type, key, field_type, display_name in EXTRA_FIELDS:
         try:
             req = urllib.request.Request(f"{spoolman_url}/api/v1/field/{entity_type}")
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                existing = json.loads(resp.read())
-                if any(f.get("key") == key for f in existing):
-                    print(f"  {C.GREEN}✓{C.RESET} {entity_type}.{key} already exists")
-                    continue
-        except Exception as e:
+            body, _ = _urlopen_with_retry(req)
+            existing = json.loads(body)
+            if any(f.get("key") == key for f in existing):
+                print(f"  {C.GREEN}✓{C.RESET} {entity_type}.{key} already exists")
+                continue
+        except Exception as e:  # noqa: BLE001
             print(f"  {C.YELLOW}!{C.RESET} Could not check {entity_type}.{key}: {e}")
+            failed.append((entity_type, key))
             continue
 
         try:
-            body = json.dumps({"field_type": field_type, "name": display_name}).encode()
+            payload = json.dumps({"field_type": field_type, "name": display_name}).encode()
             req = urllib.request.Request(
                 f"{spoolman_url}/api/v1/field/{entity_type}/{key}",
-                data=body,
+                data=payload,
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                if resp.status == 200:
-                    print(f"  {C.GREEN}✓{C.RESET} Created {entity_type}.{key}")
-        except Exception as e:
-            print(f"  {C.YELLOW}!{C.RESET} Could not create {entity_type}.{key}: {e}")
+            # Any 2xx means created; urlopen raises on 4xx/5xx so reaching here is success.
+            _urlopen_with_retry(req)
+            print(f"  {C.GREEN}✓{C.RESET} Created {entity_type}.{key}")
+        except Exception as e:  # noqa: BLE001
+            print(f"  {C.RED}✗{C.RESET} Could not create {entity_type}.{key}: {e}")
+            failed.append((entity_type, key))
+
+    return failed
+
+
+def print_failed_fields_summary(spoolman_url: str, failed: list) -> None:
+    """Print a prominent warning listing fields that could not be created.
+
+    Includes copy-paste curl commands and a pointer to the --setup-fields flag so
+    the failure is impossible to miss in busy install output.
+    """
+    if not failed:
+        return
+
+    field_meta = {(e, k): (ft, dn) for e, k, ft, dn in EXTRA_FIELDS}
+    print(f"\n{C.RED}{C.BOLD}{'═' * 42}")
+    print(f"  ⚠  Spoolman fields NOT created")
+    print(f"{'═' * 42}{C.RESET}")
+    print(f"\n  {C.YELLOW}These extra fields are missing. The scanner cannot link")
+    print(f"  NFC tags to spools without them. Create them by re-running:{C.RESET}\n")
+    print(f"    python3 install.py --setup-fields\n")
+    print(f"  {C.YELLOW}Or create them manually with curl:{C.RESET}\n")
+    for entity_type, key in failed:
+        field_type, display_name = field_meta.get((entity_type, key), ("text", key))
+        payload = json.dumps({"field_type": field_type, "name": display_name})
+        print(f"    curl -X POST '{spoolman_url}/api/v1/field/{entity_type}/{key}' \\")
+        print(f"      -H 'Content-Type: application/json' \\")
+        print(f"      -d '{payload}'\n")
 
 
 def setup_moonraker_spoolman(spoolman_url: str) -> None:
