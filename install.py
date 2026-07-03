@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-__version__ = "1.2.6"
 """
 SpoolSense Installer — interactive CLI for scanner firmware + middleware setup.
 
@@ -13,17 +12,19 @@ the middleware (choose "Middleware only").
 Note: SpoolSense middleware must run on the printer host.
 """
 
+__version__ = "1.3.0"
+
 import argparse
 import os
 import sys
 import tempfile
 
 from spoolsense_installer.constants import C, BOARDS, MIDDLEWARE_DIR
-from spoolsense_installer.ui import ask_choice, ask_yesno, ask, validate_url
+from spoolsense_installer.ui import ask_choice, ask, validate_url
 from spoolsense_installer.config import collect_scanner_config, collect_middleware_config, collect_middleware_mqtt_settings
 from spoolsense_installer.nvs import generate_nvs_csv, generate_nvs_bin
 from spoolsense_installer.firmware import fetch_latest_release, download_asset, detect_usb_port, verify_flash, flash_firmware
-from spoolsense_installer.middleware import generate_config as generate_middleware_config, install as install_middleware
+from spoolsense_installer.middleware import generate_config as generate_middleware_config, install as install_middleware, copy_klipper_macros
 from spoolsense_installer.spoolman import setup_extra_fields, setup_moonraker_spoolman, print_failed_fields_summary
 
 
@@ -95,46 +96,106 @@ def run_config_only(scanner_config: dict) -> None:
     print(f"\n  Flash with: esptool write-flash 0x9000 {bin_path}")
 
 
-def run_middleware_install(scanner_config: dict, middleware_config: dict) -> None:
-    """Generate middleware config, install repo, create systemd service."""
+def run_middleware_install(scanner_config: dict, middleware_config: dict) -> list:
+    """Generate middleware config, install repo, create systemd service.
+
+    Returns summary steps: a list of (label, status, detail) tuples.
+    """
     config_yaml = generate_middleware_config(scanner_config, middleware_config)
-    install_middleware(config_yaml)
+    result = install_middleware(config_yaml)
 
-    # Copy Klipper macro if toolchanger setup
+    steps = [("Middleware repo + dependencies", "ok", MIDDLEWARE_DIR)]
+    config_path = os.path.join(MIDDLEWARE_DIR, "config.yaml")
+    if result["config"] == "written":
+        steps.append(("config.yaml written", "ok", config_path))
+        steps.append(("Replace YOUR_DEVICE_ID in config.yaml", "warn",
+                      "device ID shown at http://spoolsense.local"))
+    else:
+        steps.append(("config.yaml kept (existing file untouched)", "skip", config_path))
+
+    if result["service"] is True:
+        steps.append(("systemd service (spoolsense.service)", "ok", "enabled on boot"))
+    elif result["service"] is False:
+        steps.append(("systemd service (spoolsense.service)", "fail", "see manual setup above"))
+    else:
+        steps.append(("systemd service", "skip", "not a systemd host"))
+
+    # Klipper macros — UPDATE_TAG drives filament deduction in every mode (#30)
     setup_type = middleware_config.get("setup_type", "")
-    if setup_type != "toolhead_stage":
-        return
-    macro_src = os.path.join(MIDDLEWARE_DIR, "middleware", "klipper", "spoolsense.cfg")
-    macro_dst = os.path.expanduser("~/printer_data/config/spoolsense.cfg")
-    if not os.path.exists(macro_src):
-        return
+    macro_dst = os.path.expanduser("~/printer_data/config")
     try:
-        import shutil
-        shutil.copy2(macro_src, macro_dst)
-        print(f"  {C.GREEN}✓{C.RESET} Copied spoolsense.cfg to {macro_dst}")
-        print(f"  {C.YELLOW}Note:{C.RESET} Add [include spoolsense.cfg] to your printer.cfg")
-    except Exception as e:
-        print(f"  {C.YELLOW}!{C.RESET} Could not copy Klipper macro: {e}")
+        macro_results = copy_klipper_macros(setup_type)
+    except OSError as e:
+        print(f"  {C.YELLOW}!{C.RESET} Could not copy Klipper macros: {e}")
+        macro_results = {}
+        steps.append(("Klipper macros", "fail", str(e)))
+
+    copied = [n for n, s in macro_results.items() if s == "copied"]
+    kept = [n for n, s in macro_results.items() if s == "kept-existing"]
+    missing = [n for n, s in macro_results.items() if s == "missing-source"]
+    for name in copied:
+        print(f"  {C.GREEN}✓{C.RESET} Copied {name} to {macro_dst}")
+    for name in kept:
+        print(f"  {C.DIM}−{C.RESET} Kept existing {name} (not overwritten)")
+    if copied or kept:
+        includes = ", ".join(f"[include {n}]" for n in sorted(copied + kept)
+                             if n != "toolhead_macros_example.cfg")
+        print(f"\n  {C.YELLOW}Klipper setup:{C.RESET} add to your printer.cfg: {includes}")
+        print(f"  For automatic filament tracking, add {C.BOLD}UPDATE_TAG{C.RESET} to your")
+        print("  PRINT_END macro — the middleware deducts usage and writes it")
+        print("  back to the spool's NFC tag on the next scan.")
+        if "toolhead_macros_example.cfg" in copied + kept:
+            print(f"  Multi-tool: adapt toolhead_macros_example.cfg into your T0-Tn macros.")
+        steps.append(("Klipper macros installed", "ok", ", ".join(sorted(copied + kept))))
+        steps.append(("Add UPDATE_TAG to your PRINT_END macro", "warn",
+                      "enables automatic filament tracking"))
+    if missing:
+        steps.append(("Klipper macros missing from middleware checkout", "warn",
+                      ", ".join(sorted(missing))))
+    return steps
 
 
-def print_completion_message(mode: str, scanner_config: dict) -> None:
-    """Print the final success message with next steps."""
-    print(f"\n{C.GREEN}{'═' * 42}")
-    print(f"  SpoolSense is installed!")
+# Summary rendering: ok/warn/fail/skip per step, header reflects the worst outcome
+_STEP_ICONS = {
+    "ok": f"{C.GREEN}✓{C.RESET}",
+    "warn": f"{C.YELLOW}⚠{C.RESET}",
+    "fail": f"{C.RED}✗{C.RESET}",
+    "skip": f"{C.DIM}−{C.RESET}",
+}
+
+
+def print_completion_message(mode: str, scanner_config: dict, steps: list) -> None:
+    """Print a truthful install summary: every step with its actual outcome."""
+    failed = any(status == "fail" for _, status, _ in steps)
+    warned = any(status == "warn" for _, status, _ in steps)
+    if failed:
+        color, title = C.RED, "Install finished with errors — see below"
+    elif warned:
+        color, title = C.YELLOW, "SpoolSense is installed — action needed"
+    else:
+        color, title = C.GREEN, "SpoolSense is installed!"
+
+    print(f"\n{color}{'═' * 42}")
+    print(f"  {title}")
     print(f"{'═' * 42}{C.RESET}\n")
 
+    for label, status, detail in steps:
+        icon = _STEP_ICONS.get(status, " ")
+        line = f"  {icon} {label}"
+        if detail:
+            line += f" {C.DIM}— {detail}{C.RESET}"
+        print(line)
+
+    print()
     if mode in ("both", "scanner"):
         hostname = scanner_config.get("hostname", "spoolsense")
         print(f"  Scanner:    http://{hostname}.local")
     if mode in ("both", "middleware"):
-        print(f"  Middleware:  systemctl status spoolsense")
+        print(f"  Middleware: systemctl status spoolsense")
         print(f"  Config:     {MIDDLEWARE_DIR}/config.yaml")
     if mode == "config":
         print(f"  NVS binary: spoolsense_nvs.bin (flash with esptool)")
-
-    print(f"\n{C.RED}{C.BOLD}  ⚠  IMPORTANT: Replace YOUR_DEVICE_ID in the middleware config")
-    print(f"     with your scanner's device ID.")
-    print(f"     Find it at http://spoolsense.local (shown on landing page).{C.RESET}\n")
+    print()
 
 
 # ── Entry point ──────────────────────────────────────────────────────────────
@@ -189,7 +250,8 @@ def main() -> None:
   ___) | |_) | (_) | (_) | |___) |  __/ | | \\__ \\  __/
  |____/| .__/ \\___/ \\___/|_|____/ \\___|_| |_|___/\\___|
        |_|{C.RESET}
-{C.DIM}          NFC Filament Intelligence for 3D Printers{C.RESET}
+{C.DIM}          NFC Filament Intelligence for 3D Printers
+          Installer v{__version__}{C.RESET}
     """)
 
     print(f"  {C.GREEN}RECOMMENDED:{C.RESET} Run from your printer host (Raspberry Pi)")
@@ -218,21 +280,41 @@ def main() -> None:
         middleware_config = collect_middleware_config()
 
     failed_fields = []
+    steps = []
     if mode in ("both", "scanner"):
         failed_fields = run_scanner_install(scanner_config)
+        steps.append(("Scanner firmware flashed", "ok",
+                      BOARDS[scanner_config["board"]][0]))
+        if scanner_config.get("spoolman_on") and scanner_config.get("spoolman_url"):
+            if failed_fields:
+                steps.append(("Spoolman extra fields", "fail",
+                              f"{len(failed_fields)} field(s) not created — see below"))
+            else:
+                steps.append(("Spoolman extra fields", "ok", ""))
+        else:
+            steps.append(("Spoolman extra fields", "skip", "Spoolman disabled"))
 
     if mode == "config":
         run_config_only(scanner_config)
+        steps.append(("NVS config generated", "ok", "spoolsense_nvs.bin"))
 
     if mode in ("both", "middleware"):
-        run_middleware_install(scanner_config, middleware_config)
+        steps.extend(run_middleware_install(scanner_config, middleware_config))
 
     # Moonraker Spoolman config (independent of mode)
     spoolman_url = scanner_config.get("spoolman_url") or ""
     if scanner_config.get("spoolman_on") and spoolman_url:
-        setup_moonraker_spoolman(spoolman_url)
+        moonraker_status = setup_moonraker_spoolman(spoolman_url)
+        steps.append({
+            "added": ("Moonraker [spoolman] config", "warn", "restart Moonraker to apply"),
+            "exists": ("Moonraker [spoolman] config", "ok", "already configured"),
+            "declined": ("Moonraker [spoolman] config", "skip", "declined"),
+            "missing-conf": ("Moonraker [spoolman] config", "warn",
+                             "moonraker.conf not found — add manually"),
+            "failed": ("Moonraker [spoolman] config", "fail", "could not write moonraker.conf"),
+        }[moonraker_status])
 
-    print_completion_message(mode, scanner_config)
+    print_completion_message(mode, scanner_config, steps)
 
     # Print last so a field-creation failure is the final thing the user sees.
     print_failed_fields_summary(spoolman_url, failed_fields)
