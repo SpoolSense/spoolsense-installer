@@ -160,8 +160,11 @@ def verify_flash(port: Optional[str], board_key: str) -> bool:
         sys.exit(1)
     print(f"  Chip: {detected_display} ✓")
 
-    # Flash size varies: 4MB minimum for most, 16MB for S3-DevKitC (PSRAM)
-    flash_match = re.search(r"(\d+)\s*MB", output)
+    # Flash size varies: 4MB minimum for most, 16MB for S3-DevKitC (PSRAM).
+    # Anchor on the labeled line — S3 output lists "Embedded PSRAM 8MB" in
+    # Features BEFORE "Detected flash size: 16MB", and a bare first-match
+    # would read the PSRAM size and falsely reject valid boards.
+    flash_match = re.search(r"flash size:?\s*(\d+)\s*MB", output, re.IGNORECASE)
     if not flash_match:
         print(f"\n  ✗ Could not determine flash size from esptool output.")
         print("    Refusing to flash an unverified device.")

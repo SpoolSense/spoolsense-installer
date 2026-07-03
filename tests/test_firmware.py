@@ -27,6 +27,17 @@ GOOD_ESP32_OUTPUT = (
     "Detected flash size: 4MB\n"
 )
 
+# Real-world S3-DevKitC output: the PSRAM size appears BEFORE the flash size.
+# Naive "first NN MB" parsing reads 8MB and falsely aborts a valid 16MB board.
+S3_DEVKITC_PSRAM_OUTPUT = (
+    "esptool v5.0\n"
+    "Chip is ESP32-S3 (QFN56) (revision v0.1)\n"
+    "Features: WiFi, BLE, Embedded PSRAM 8MB (AP_3v3)\n"
+    "Manufacturer: 20\n"
+    "Device: 4017\n"
+    "Detected flash size: 16MB\n"
+)
+
 
 class VerifyFlashTest(unittest.TestCase):
     """verify_flash must fail CLOSED: no flashing unless chip and size are confirmed."""
@@ -37,6 +48,12 @@ class VerifyFlashTest(unittest.TestCase):
 
     def test_accepts_matching_chip_and_flash(self):
         self.assertTrue(self._verify(completed(stdout=GOOD_ESP32_OUTPUT)))
+
+    def test_psram_size_not_mistaken_for_flash_size(self):
+        """S3 boards list 'Embedded PSRAM 8MB' before 'Detected flash size: 16MB' —
+        the parser must anchor on the labeled flash line, not the first MB value."""
+        self.assertTrue(self._verify(completed(stdout=S3_DEVKITC_PSRAM_OUTPUT),
+                                     board_key="esp32s3devkitc"))
 
     def test_exits_when_esptool_fails(self):
         """Non-zero esptool exit must abort, even if output happens to parse."""
