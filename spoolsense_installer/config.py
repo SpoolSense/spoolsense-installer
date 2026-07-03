@@ -14,7 +14,7 @@ def collect_scanner_config() -> Dict[str, Union[str, int]]:
     board = ask_choice("Scanner board:", {
         "esp32dev": "ESP32-WROOM DevKit (4MB) — most common",
         "esp32s3zero": "ESP32-S3-Zero by Waveshare (4MB)",
-        "esp32c3": "ESP32-C3-DevKitM-1 (4MB)",
+        "esp32c3": "ESP32-C3 SuperMini / DevKitM-1 (4MB)",
         "esp32s3devkitc": "ESP32-S3-DevKitC-1-N16R8 (16MB + 8MB PSRAM)",
         "other": "Other / not sure",
     })
@@ -47,7 +47,8 @@ def collect_scanner_config() -> Dict[str, Union[str, int]]:
     mqtt_port = ask("MQTT port", default=1883, validate=validate_port)
     mqtt_user = ask("MQTT username", default="")
     mqtt_pass = ask("MQTT password", password=True, default="")
-    mqtt_prefix = ask("MQTT topic prefix", default="spoolsense")
+    # No topic-prefix prompt: the pre-built firmware publishes under a
+    # compile-time "spoolsense" prefix (UserConfig.h) — it is not configurable.
 
     spoolman_on = ask_yesno("Enable Spoolman?", default=True)
     spoolman_url = ""
@@ -94,7 +95,6 @@ def collect_scanner_config() -> Dict[str, Union[str, int]]:
         "mqtt_port": int(mqtt_port),
         "mqtt_user": mqtt_user,
         "mqtt_pass": mqtt_pass,
-        "mqtt_prefix": mqtt_prefix,
         "spoolman_on": 1 if spoolman_on else 0,
         "spoolman_url": spoolman_url,
         "auto_mode": int(auto_mode),
