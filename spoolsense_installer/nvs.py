@@ -26,7 +26,6 @@ def generate_nvs_csv(config: Dict[str, Union[str, int]]) -> str:
         ("mqtt_port", "data", "u16", config["mqtt_port"]),
         ("mqtt_user", "data", "string", config["mqtt_user"]),
         ("mqtt_pass", "data", "string", config["mqtt_pass"]),
-        ("mqtt_prefix", "data", "string", config["mqtt_prefix"]),
         ("spoolman_on", "data", "u8", config["spoolman_on"]),
         ("spoolman_url", "data", "string", config["spoolman_url"]),
         ("auto_mode", "data", "u8", config["auto_mode"]),

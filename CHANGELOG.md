@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.3.0] - Unreleased
+
+### Added
+- **Robust Spoolman extra-field creation** (#17, #33) — waits for Spoolman to come up (~45s budget), retries transient failures with backoff, never silently skips a field, and prints a prominent summary with copy-paste `curl` commands for anything that failed. New `--setup-fields` flag re-runs just the field creation. *(shipped earlier on `main`, previously unlogged)*
+- **Klipper macros installed for every setup type** (#27, #30) — `spoolsense.cfg` (ASSIGN_SPOOL/UPDATE_TAG) is now copied for all setups, not just `toolhead_stage`; without it, automatic filament deduction never fires. `spoolman_macros.cfg` is copied for direct-toolhead setups and `toolhead_macros_example.cfg` for multi-tool setups (existing copies are never overwritten). The installer now prints PRINT_END/UPDATE_TAG guidance.
+- **Honest install summary** — the final message now lists every step with its actual outcome (✓/⚠/✗) instead of always claiming "SpoolSense is installed!". Failed systemd creation, skipped config writes, unwritten Moonraker config, and pending YOUR_DEVICE_ID edits are called out explicitly.
+- **CI** — GitHub Actions now runs the test suite and critical lint checks on every PR (Python 3.9 and 3.12).
+- Installer version is now shown in the banner.
+
+### Fixed
+- **Chip verification fails closed** — flashing now aborts if `esptool flash-id` exits non-zero, times out, or its output can't be parsed (previously verification was silently skipped and flashing proceeded). Chip family matching is exact: selecting `esp32dev` with an ESP32-S3 connected is now rejected (substring matching previously let it through).
+- **Flash timeout handled** — a hung flash now exits with guidance instead of a traceback; timeout raised from 2 to 5 minutes for 16MB boards.
+- **Removed the dead `mqtt_prefix` prompt/NVS key** — the pre-built firmware's MQTT topic prefix is compile-time (`spoolsense`) and the NVS key was never read; prompting for it falsely implied custom prefixes work.
+- Declining the `config.yaml` overwrite prompt no longer skips systemd service creation.
+- The manual systemd setup instruction no longer points at a temp file that was already deleted.
+- `nvs_keys.csv` documentation regenerated to match the generator (namespace row fixed, `tft_driver` added, dead `mqtt_prefix` removed).
+
+### Changed
+- README: corrected Python requirement (3.9+, was "3.6+"), documented all four supported boards (ESP32-C3 and S3-DevKitC-1 were missing), the Config-only mode, `--setup-fields`, and the Web Flasher alternative.
+- ESP32-C3 board label aligned with spoolsense.org: "ESP32-C3 SuperMini / DevKitM-1".
+
+---
+
 ## [1.2.6] - 2026-05-09
 
 ### Added

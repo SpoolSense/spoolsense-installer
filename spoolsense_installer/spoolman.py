@@ -129,11 +129,13 @@ def print_failed_fields_summary(spoolman_url: str, failed: list) -> None:
         print(f"      -d '{payload}'\n")
 
 
-def setup_moonraker_spoolman(spoolman_url: str) -> None:
+def setup_moonraker_spoolman(spoolman_url: str) -> str:
     """Offer to add [spoolman] section to moonraker.conf if not already present.
 
     Moonraker's built-in Spoolman integration tracks filament usage in real-time
     during prints. Without this, tracking won't work for UID-only tags.
+
+    Returns one of: "added", "exists", "declined", "missing-conf", "failed".
     """
     if not os.path.exists(MOONRAKER_CONF_PATH):
         print(f"  {C.YELLOW}!{C.RESET} moonraker.conf not found at {MOONRAKER_CONF_PATH}")
@@ -141,14 +143,14 @@ def setup_moonraker_spoolman(spoolman_url: str) -> None:
         print(f"    [spoolman]")
         print(f"    server: {spoolman_url}")
         print(f"    sync_rate: 5")
-        return
+        return "missing-conf"
 
     with open(MOONRAKER_CONF_PATH, "r") as f:
         content = f.read()
 
     if re.search(r'^\[spoolman\]\s*$', content, re.MULTILINE):
         print(f"  {C.GREEN}✓{C.RESET} Moonraker Spoolman config already exists — skipping")
-        return
+        return "exists"
 
     print(f"\n  {C.YELLOW}Moonraker Spoolman Integration:{C.RESET}")
     print(f"  Moonraker can automatically track filament usage during prints")
@@ -157,7 +159,7 @@ def setup_moonraker_spoolman(spoolman_url: str) -> None:
 
     if not ask_yesno("Add [spoolman] to moonraker.conf?", default=True):
         print(f"  Skipped. You can add it manually later.")
-        return
+        return "declined"
 
     # sync_rate: 5 syncs filament usage every 5 seconds during prints
     spoolman_block = f"\n[spoolman]\nserver: {spoolman_url}\nsync_rate: 5\n"
@@ -167,11 +169,14 @@ def setup_moonraker_spoolman(spoolman_url: str) -> None:
         print(f"  {C.GREEN}✓{C.RESET} Added [spoolman] to {MOONRAKER_CONF_PATH}")
         print(f"\n  {C.YELLOW}Important:{C.RESET} Restart Moonraker for this change to take effect:")
         print(f"    sudo systemctl restart moonraker\n")
+        return "added"
     except PermissionError:
         print(f"  {C.RED}✗{C.RESET} Permission denied writing to {MOONRAKER_CONF_PATH}")
         print(f"    Add this manually:")
         print(f"    [spoolman]")
         print(f"    server: {spoolman_url}")
         print(f"    sync_rate: 5")
+        return "failed"
     except Exception as e:
         print(f"  {C.RED}✗{C.RESET} Failed to write moonraker.conf: {e}")
+        return "failed"

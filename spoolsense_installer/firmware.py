@@ -13,6 +13,9 @@ from typing import Optional
 
 from .constants import BOARDS, C, GITHUB_API
 
+# 16MB boards (S3-DevKitC) can exceed the old 2-minute budget at low baud rates
+FLASH_TIMEOUT = 300
+
 
 def fetch_latest_release() -> dict:
     """Fetch latest release info from GitHub API."""
@@ -100,7 +103,11 @@ def detect_usb_port() -> Optional[str]:
 
 
 def verify_flash(port: Optional[str], board_key: str) -> bool:
-    """Verify the connected chip matches the selected board and has sufficient flash."""
+    """Verify the connected chip matches the selected board and has sufficient flash.
+
+    Fails CLOSED: if the chip or flash size cannot be positively confirmed, the
+    installer aborts rather than flashing an unverified device.
+    """
     board_name, expected_chip, _, min_flash, _ = BOARDS[board_key]
     print(f"\n  Verifying chip...")
 
@@ -110,38 +117,68 @@ def verify_flash(port: Optional[str], board_key: str) -> bool:
     cmd.append("flash-id")
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-    except (FileNotFoundError, OSError):
-        cmd[0] = sys.executable
-        cmd.insert(1, "-m")
-        cmd.insert(2, "esptool")
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        except (FileNotFoundError, OSError):
+            cmd[0] = sys.executable
+            cmd.insert(1, "-m")
+            cmd.insert(2, "esptool")
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+    except subprocess.TimeoutExpired:
+        print(f"\n  ✗ Chip verification timed out — the device is not responding.")
+        print("    Unplug and reconnect the USB cable, then try again.")
+        print("    If using an ESP32-S3/C3, hold BOOT while connecting.")
+        sys.exit(1)
 
     output = result.stdout + result.stderr
 
-    # Prevent flashing wrong board variant (e.g. esp32s3 firmware on esp32 chip)
-    chip_match = re.search(r"Chip is (ESP32[^\s]*)", output)
-    if chip_match:
-        detected_chip = chip_match.group(1).lower().replace("-", "")
-        if expected_chip not in detected_chip:
-            print(f"\n  ✗ Chip mismatch!")
-            print(f"    Selected board: {board_name} (expects {expected_chip})")
-            print(f"    Detected chip:  {chip_match.group(1)}")
-            print(f"    Please select the correct board type and try again.")
-            sys.exit(1)
-        print(f"  Chip: {chip_match.group(1)} ✓")
+    if result.returncode != 0:
+        print(f"\n  ✗ Could not read chip info (esptool exited with {result.returncode}).")
+        tail = output.strip().splitlines()[-3:]
+        for line in tail:
+            print(f"    {line}")
+        print("    Check the USB cable and serial permissions, then try again.")
+        sys.exit(1)
 
-    # Flash size varies: 4MB minimum for most, 16MB for S3-DevKitC (PSRAM)
-    flash_match = re.search(r"(\d+)\s*MB", output)
-    if flash_match:
-        flash_bytes = int(flash_match.group(1)) * 1024 * 1024
-        if flash_bytes < min_flash:
-            print(f"\n  ✗ Flash too small!")
-            print(f"    Required: {min_flash // (1024*1024)}MB")
-            print(f"    Detected: {flash_match.group(1)}MB")
-            print(f"    This board cannot run SpoolSense firmware.")
-            sys.exit(1)
-        print(f"  Flash: {flash_match.group(1)}MB ✓")
+    # Prevent flashing wrong board variant (e.g. esp32s3 firmware on esp32 chip).
+    # Match the chip FAMILY exactly — substring checks would accept esp32s3 for esp32.
+    family_match = re.search(r"Chip is (ESP32(?:-S2|-S3|-C3|-C6|-H2|-P4)?)", output)
+    display_match = re.search(r"Chip is (ESP32[^\s]*)", output)
+    if not family_match:
+        print(f"\n  ✗ Could not identify the connected chip from esptool output.")
+        print("    Refusing to flash an unverified device.")
+        print("    Unplug and reconnect the USB cable, then try again.")
+        sys.exit(1)
+
+    detected_family = family_match.group(1).lower().replace("-", "")
+    detected_display = display_match.group(1) if display_match else family_match.group(1)
+    if detected_family != expected_chip:
+        print(f"\n  ✗ Chip mismatch!")
+        print(f"    Selected board: {board_name} (expects {expected_chip})")
+        print(f"    Detected chip:  {detected_display}")
+        print(f"    Please select the correct board type and try again.")
+        sys.exit(1)
+    print(f"  Chip: {detected_display} ✓")
+
+    # Flash size varies: 4MB minimum for most, 16MB for S3-DevKitC (PSRAM).
+    # Anchor on the labeled line — S3 output lists "Embedded PSRAM 8MB" in
+    # Features BEFORE "Detected flash size: 16MB", and a bare first-match
+    # would read the PSRAM size and falsely reject valid boards.
+    flash_match = re.search(r"flash size:?\s*(\d+)\s*MB", output, re.IGNORECASE)
+    if not flash_match:
+        print(f"\n  ✗ Could not determine flash size from esptool output.")
+        print("    Refusing to flash an unverified device.")
+        print("    Unplug and reconnect the USB cable, then try again.")
+        sys.exit(1)
+
+    flash_bytes = int(flash_match.group(1)) * 1024 * 1024
+    if flash_bytes < min_flash:
+        print(f"\n  ✗ Flash too small!")
+        print(f"    Required: {min_flash // (1024*1024)}MB")
+        print(f"    Detected: {flash_match.group(1)}MB")
+        print(f"    This board cannot run SpoolSense firmware.")
+        sys.exit(1)
+    print(f"  Flash: {flash_match.group(1)}MB ✓")
 
     return True
 
@@ -174,12 +211,18 @@ def flash_firmware(port: Optional[str], board_key: str, firmware_bin: bytes,
         ])
 
         try:
-            result = subprocess.run(cmd, timeout=120)
-        except (FileNotFoundError, OSError):
-            cmd[0] = sys.executable
-            cmd.insert(1, "-m")
-            cmd.insert(2, "esptool")
-            result = subprocess.run(cmd, timeout=120)
+            try:
+                result = subprocess.run(cmd, timeout=FLASH_TIMEOUT)
+            except (FileNotFoundError, OSError):
+                cmd[0] = sys.executable
+                cmd.insert(1, "-m")
+                cmd.insert(2, "esptool")
+                result = subprocess.run(cmd, timeout=FLASH_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            print(f"\n  ✗ Flashing timed out after {FLASH_TIMEOUT // 60} minutes.")
+            print("    The device may be in a bad state — power-cycle it and")
+            print("    run the installer again.")
+            sys.exit(1)
 
         if result.returncode != 0:
             print("\n  ✗ Flash failed!")

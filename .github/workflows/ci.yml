@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # 3.9 is the installer's minimum supported version
+        python-version: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install tooling
+        run: pip install pytest flake8
+
+      - name: Lint (syntax errors and undefined names)
+        run: flake8 install.py spoolsense_installer tests --select=E9,F63,F7,F82 --show-source
+
+      - name: Run tests
+        run: python -m pytest tests/ -v

@@ -48,6 +48,7 @@ moonraker_url: "{middleware_config['moonraker_url']}"
 
 low_spool_threshold: 100
 
+# Must match the scanner firmware's compile-time MQTT topic prefix
 scanner_topic_prefix: "spoolsense"
 
 scanners:
@@ -59,8 +60,57 @@ publish_lane_data: {str(middleware_config.get('publish_lane_data', False)).lower
     return config_yaml
 
 
-def install(config_yaml: str) -> None:
-    """Clone SpoolSense middleware, install deps, write config, create service."""
+# Which shipped macro files each setup type needs. spoolsense.cfg carries
+# ASSIGN_SPOOL/UPDATE_TAG — UPDATE_TAG drives filament deduction in every mode.
+# spoolman_macros.cfg (SET_ACTIVE_SPOOL) is for direct-toolhead setups; AFC
+# manages its own Spoolman state. toolhead_macros_example.cfg is a per-tool
+# template for multi-tool setups.
+_MACROS_BY_SETUP = {
+    "spoolsense.cfg": ("afc_stage", "afc_lane", "toolhead_stage", "toolchanger", "single"),
+    "spoolman_macros.cfg": ("toolhead_stage", "toolchanger", "single"),
+    "toolhead_macros_example.cfg": ("toolhead_stage", "toolchanger"),
+}
+# spoolsense.cfg is SpoolSense-owned and safe to refresh; the others are
+# templates the user edits, so an existing copy is never touched.
+_REFRESH_ON_REINSTALL = ("spoolsense.cfg",)
+
+
+def copy_klipper_macros(setup_type: str, src_dir: str = None, dst_dir: str = None) -> dict:
+    """Copy the Klipper macro files this setup type needs into the printer config dir.
+
+    Returns {filename: status} with status one of "copied", "kept-existing",
+    "missing-source". Missing sources are reported, not fatal — the middleware
+    checkout may predate a macro file.
+    """
+    if src_dir is None:
+        src_dir = os.path.join(MIDDLEWARE_DIR, "middleware", "klipper")
+    if dst_dir is None:
+        dst_dir = os.path.expanduser("~/printer_data/config")
+
+    results = {}
+    for name, setup_types in _MACROS_BY_SETUP.items():
+        if setup_type not in setup_types:
+            continue
+        src = os.path.join(src_dir, name)
+        dst = os.path.join(dst_dir, name)
+        if not os.path.exists(src):
+            results[name] = "missing-source"
+            continue
+        if os.path.exists(dst) and name not in _REFRESH_ON_REINSTALL:
+            results[name] = "kept-existing"
+            continue
+        shutil.copy2(src, dst)
+        results[name] = "copied"
+    return results
+
+
+def install(config_yaml: str) -> dict:
+    """Clone SpoolSense middleware, install deps, write config, create service.
+
+    Returns step outcomes: {"config": "written"|"kept", "service": True|False|None}
+    (service None = not attempted, e.g. non-Linux host). Fatal failures still
+    exit directly.
+    """
     print(f"\n{C.CYAN}── Installing Middleware ────────────────{C.RESET}\n")
 
     if os.path.isdir(MIDDLEWARE_DIR):
@@ -99,21 +149,26 @@ def install(config_yaml: str) -> None:
     print("  ✓ Dependencies installed")
 
     # Config lives in SpoolSense root directory
+    config_status = "written"
     config_path = os.path.join(MIDDLEWARE_DIR, "config.yaml")
     if os.path.exists(config_path):
         print(f"  ⚠  Existing config found at {config_path}")
         if not ask_yesno("  Overwrite?", default=False):
-            print("  Skipping config write.")
-            return
-    with open(config_path, "w") as f:
-        f.write(config_yaml)
-    print(f"  {C.GREEN}✓{C.RESET} Config written to {config_path}")
+            print("  Keeping existing config.")
+            config_status = "kept"
+    if config_status == "written":
+        with open(config_path, "w") as f:
+            f.write(config_yaml)
+        print(f"  {C.GREEN}✓{C.RESET} Config written to {config_path}")
 
+    service_status = None
     if platform.system() == "Linux" and shutil.which("systemctl"):
-        create_systemd_service()
+        service_status = create_systemd_service()
+
+    return {"config": config_status, "service": service_status}
 
 
-def create_systemd_service() -> None:
+def create_systemd_service() -> bool:
     """Create and enable systemd service for SpoolSense middleware."""
     # After=network-online.target ensures MQTT broker is reachable before starting
     service_content = f"""[Unit]
@@ -146,8 +201,10 @@ WantedBy=multi-user.target
         subprocess.run(["sudo", "systemctl", "enable", "spoolsense"], check=True)
         subprocess.run(["sudo", "systemctl", "restart", "spoolsense"], check=True)
         print("  ✓ SpoolSense service started and enabled on boot")
+        os.unlink(tmp_path)
+        return True
     except subprocess.CalledProcessError:
+        # Keep the tmp file — the manual-setup instruction points at it.
         print(f"{C.YELLOW}  ⚠ {C.RESET} Could not create systemd service (requires sudo)")
         print(f"     Manual setup: copy {tmp_path} to {service_path}")
-    finally:
-        os.unlink(tmp_path)
+        return False
