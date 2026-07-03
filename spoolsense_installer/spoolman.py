@@ -20,6 +20,22 @@ EXTRA_FIELDS = [
     ("filament", "dry_time_hours", "text", "Dry Time (hrs)"),
 ]
 
+# Happy Hare binding (middleware v1.7.3+): the middleware PATCHes these onto
+# spools at scan time, and Spoolman rejects writes to undeclared fields with
+# HTTP 400 — so they must exist before the first bind. mmu_gate MUST be
+# integer (the middleware writes the gate number).
+HAPPY_HARE_FIELDS = [
+    ("spool", "mmu_gate", "integer", "MMU Gate"),
+    ("spool", "printer_name", "text", "Printer Name"),
+]
+
+
+def fields_for_setup(setup_type):
+    """The Spoolman extra fields a given middleware setup type requires."""
+    if setup_type == "happy_hare":
+        return EXTRA_FIELDS + HAPPY_HARE_FIELDS
+    return EXTRA_FIELDS
+
 
 def _urlopen_with_retry(req, *, attempts: int = 3, base_delay: float = 1.0, timeout: int = 10):
     """Open a request, retrying on any error with exponential backoff.
@@ -60,20 +76,25 @@ def _wait_for_spoolman(spoolman_url: str) -> bool:
     return False
 
 
-def setup_extra_fields(spoolman_url: str) -> list:
+def setup_extra_fields(spoolman_url: str, fields: list = None) -> list:
     """Create extra fields in Spoolman for tag data enrichment.
+
+    ``fields`` defaults to the base EXTRA_FIELDS; pass fields_for_setup(...) to
+    include mode-specific fields (e.g. Happy Hare's mmu_gate/printer_name).
 
     Returns a list of ``(entity_type, key)`` tuples that could NOT be created.
     An empty list means every field exists or was created successfully. Nothing
     is silently skipped: if Spoolman is unreachable, every field is reported as
     failed so the caller can surface a prominent warning.
     """
+    if fields is None:
+        fields = EXTRA_FIELDS
     if not _wait_for_spoolman(spoolman_url):
         print(f"  {C.RED}✗{C.RESET} Spoolman not reachable at {spoolman_url} — could not create fields")
-        return [(entity_type, key) for entity_type, key, _, _ in EXTRA_FIELDS]
+        return [(entity_type, key) for entity_type, key, _, _ in fields]
 
     failed = []
-    for entity_type, key, field_type, display_name in EXTRA_FIELDS:
+    for entity_type, key, field_type, display_name in fields:
         try:
             req = urllib.request.Request(f"{spoolman_url}/api/v1/field/{entity_type}")
             body, _ = _urlopen_with_retry(req)
@@ -113,7 +134,7 @@ def print_failed_fields_summary(spoolman_url: str, failed: list) -> None:
     if not failed:
         return
 
-    field_meta = {(e, k): (ft, dn) for e, k, ft, dn in EXTRA_FIELDS}
+    field_meta = {(e, k): (ft, dn) for e, k, ft, dn in EXTRA_FIELDS + HAPPY_HARE_FIELDS}
     print(f"\n{C.RED}{C.BOLD}{'═' * 42}")
     print(f"  ⚠  Spoolman fields NOT created")
     print(f"{'═' * 42}{C.RESET}")

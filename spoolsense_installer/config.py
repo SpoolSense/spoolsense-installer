@@ -118,10 +118,24 @@ def collect_middleware_config() -> Dict[str, Union[str, List[str]]]:
         "toolhead_stage": "Toolchanger shared scanner (scan spool, assign via macro or keypad)",
         "toolchanger": "Toolchanger per-toolhead scanners (one scanner per tool)",
         "single": "Single toolhead (one scanner, one extruder)",
+        "happy_hare": "Happy Hare MMU (scan spool, bind to the selected gate)",
     })
 
     scanners: list[dict] = []
-    if setup_type == "afc_stage":
+    printer_name = ""
+    toolheads: List[str] = []
+    if setup_type == "happy_hare":
+        print(f"\n  {C.YELLOW}Note:{C.RESET} Happy Hare must run in {C.BOLD}pull mode{C.RESET} (spoolman_support: pull).")
+        print("  Workflow: select a gate (MMU_SELECT_GATE GATE=N), scan a tag,")
+        print("  and the middleware binds the spool to that gate in Spoolman.\n")
+        print(f"  {C.YELLOW}Note:{C.RESET} After flashing your scanner, find its device ID")
+        print("  from the MQTT topic: spoolsense/<device_id>/tag/state\n")
+        # Written to each spool's extra.printer_name; Happy Hare uses it to
+        # identify this printer's spools when syncing from Spoolman.
+        printer_name = ask("Printer name (as Happy Hare knows it)",
+                           validate=validate_not_empty)
+        scanners.append({"action": "happy_hare_stage"})
+    elif setup_type == "afc_stage":
         print(f"\n  {C.YELLOW}Note:{C.RESET} After flashing your scanner, find its device ID")
         print("  from the MQTT topic: spoolsense/<device_id>/tag/state\n")
         scanners.append({"action": "afc_stage"})
@@ -137,6 +151,9 @@ def collect_middleware_config() -> Dict[str, Union[str, List[str]]]:
         print("  ASSIGN_SPOOL macro in Klipper console or the 3x4 keypad.\n")
         print(f"  {C.YELLOW}Note:{C.RESET} After flashing your scanner, find its device ID")
         print("  from the MQTT topic: spoolsense/<device_id>/tag/state\n")
+        # Explicit toolheads list (#24) — the mobile app picker needs it
+        th_str = ask("Toolheads (comma-separated)", default="T0,T1")
+        toolheads = [t.strip() for t in th_str.split(",") if t.strip()]
         scanners.append({"action": "toolhead_stage"})
     elif setup_type == "toolchanger":
         th_str = ask("Toolheads (comma-separated)", default="T0,T1")
@@ -148,7 +165,19 @@ def collect_middleware_config() -> Dict[str, Union[str, List[str]]]:
     elif setup_type == "single":
         scanners.append({"action": "toolhead", "toolhead": "T0"})
 
-    moonraker_url = ask("Moonraker URL", default="http://localhost", validate=validate_url)
+    # Hint the default port — a bare host URL is valid but rarely what
+    # Moonraker actually listens on (TODO P2)
+    moonraker_url = ask("Moonraker URL", default="http://localhost:7125", validate=validate_url)
+
+    def validate_grams(value: str) -> Optional[str]:
+        return None if value.isdigit() else "Must be a non-negative number"
+
+    low_spool_threshold = int(ask("Low-spool alert threshold (grams)", default=100,
+                                  validate=validate_grams))
+
+    print(f"\n  {C.YELLOW}Web config panel:{C.RESET} the middleware can serve a browser UI +")
+    print("  mobile REST API on port 5001 for editing config and mobile scans.\n")
+    mobile_enabled = ask_yesno("Enable the web config panel (port 5001)?", default=False)
 
     publish_lane_data = False
     if setup_type == "afc_stage":
@@ -159,7 +188,7 @@ def collect_middleware_config() -> Dict[str, Union[str, List[str]]]:
         print("  with a Box Turtle) and want slicer data for those tools too.")
         print("  This also enables the ASSIGN_SPOOL macro for tool assignment.\n")
         publish_lane_data = ask_yesno("Enable slicer integration for toolheads?", default=False)
-    elif setup_type not in ("afc_lane",):
+    elif setup_type not in ("afc_lane", "happy_hare"):
         print(f"\n  {C.YELLOW}Slicer integration:{C.RESET} Slicers like Orca Slicer can auto-populate")
         print("  tool colors, materials, and temps from your scanned spools.\n")
         publish_lane_data = ask_yesno("Enable slicer integration?", default=False)
@@ -167,7 +196,11 @@ def collect_middleware_config() -> Dict[str, Union[str, List[str]]]:
     return {
         "setup_type": setup_type,
         "scanners": scanners,
+        "printer_name": printer_name,
+        "toolheads": toolheads,
         "moonraker_url": moonraker_url,
+        "low_spool_threshold": low_spool_threshold,
+        "mobile_enabled": mobile_enabled,
         "publish_lane_data": publish_lane_data,
     }
 
