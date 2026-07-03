@@ -12,6 +12,8 @@ Interactive CLI installer for the [SpoolSense](https://github.com/SpoolSense) ec
 curl -sL https://raw.githubusercontent.com/SpoolSense/spoolsense-installer/main/install.sh -o /tmp/install.sh && bash /tmp/install.sh
 ```
 
+Prefer a browser? You can flash the scanner firmware without installing anything using the [Web Flasher](https://spoolsense.org/installation/web-flasher/) (Chrome/Edge), then run this installer with "Middleware only" on your printer host.
+
 ## How It Works
 
 The installer asks a series of questions (WiFi, MQTT, board type, etc.) and then:
@@ -23,7 +25,23 @@ The installer asks a series of questions (WiFi, MQTT, board type, etc.) and then
    - **Toolchanger shared scanner** (`toolhead_stage`) — one scanner for all toolheads (klipper-toolchanger)
    - **Toolchanger per-toolhead** (`toolhead`) — one scanner per tool
    - **Single toolhead** (`single`) — one scanner, one extruder
-3. **Spoolman** — Optionally creates extra fields in Spoolman (`nfc_id`, `tag_format`, `aspect`, `dry_temp`, `dry_time_hours`) needed for full tag data tracking
+3. **Klipper macros** — Copies the macros your setup needs to `~/printer_data/config/`: `spoolsense.cfg` (ASSIGN_SPOOL/UPDATE_TAG, all setups), `spoolman_macros.cfg` (direct-toolhead setups), and `toolhead_macros_example.cfg` (multi-tool setups). Add `UPDATE_TAG` to your `PRINT_END` macro for automatic filament tracking.
+4. **Spoolman** — Optionally creates extra fields in Spoolman (`nfc_id`, `tag_format`, `aspect`, `dry_temp`, `dry_time_hours`) needed for full tag data tracking, and offers to add the `[spoolman]` section to `moonraker.conf`
+
+### Install modes
+
+- **Scanner + Middleware** — everything in one pass (recommended, run on the printer host)
+- **Scanner only** — flash the ESP32 (e.g. from a laptop)
+- **Middleware only** — printer-host setup without flashing (also the right choice after using the Web Flasher)
+- **Config only** — for source builds: writes `spoolsense_nvs.csv`/`.bin` to the current directory so you can flash config without reflashing firmware
+
+### Extra flags
+
+```bash
+python3 install.py --setup-fields [--spoolman-url http://spoolman.local:7912]
+```
+
+Re-creates just the required Spoolman extra fields (useful if Spoolman wasn't running during the initial install).
 
 
 ## Recommended Setup
@@ -44,6 +62,8 @@ After installation, open `http://spoolsense.local` in your browser to retrieve y
 |-------|-------|--------|
 | ESP32-WROOM DevKit | 4MB | Tested |
 | ESP32-S3-Zero (Waveshare) | 4MB | Tested |
+| ESP32-C3 SuperMini / DevKitM-1 | 4MB | Tested |
+| ESP32-S3-DevKitC-1-N16R8 | 16MB + 8MB PSRAM | Tested |
 
 Other boards: compile from source via [PlatformIO](https://github.com/SpoolSense/spoolsense_scanner).
 
@@ -65,7 +85,7 @@ The installer verifies the connected chip type and flash size before flashing to
 
 ## Requirements
 
-- Python 3.6+
+- Python 3.9+
 - git
 - USB cable (for scanner flashing)
 - Network access (to download firmware and clone repos)

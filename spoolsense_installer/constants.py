@@ -14,7 +14,7 @@ SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BOARDS = {
     "esp32dev": ("ESP32-WROOM DevKit (4MB)", "esp32", "esp32dev", 4 * 1024 * 1024, 0x1000),
     "esp32s3zero": ("ESP32-S3-Zero by Waveshare (4MB)", "esp32s3", "esp32s3zero", 4 * 1024 * 1024, 0x0),
-    "esp32c3": ("ESP32-C3-DevKitM-1 (4MB)", "esp32c3", "esp32c3", 4 * 1024 * 1024, 0x0),
+    "esp32c3": ("ESP32-C3 SuperMini / DevKitM-1 (4MB)", "esp32c3", "esp32c3", 4 * 1024 * 1024, 0x0),
     "esp32s3devkitc": ("ESP32-S3-DevKitC-1-N16R8 (16MB+8MB PSRAM)", "esp32s3", "esp32s3devkitc", 16 * 1024 * 1024, 0x0),
 }
 
