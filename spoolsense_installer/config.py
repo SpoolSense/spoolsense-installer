@@ -3,21 +3,23 @@
 import sys
 from typing import Dict, List, Optional, Union
 
-from .constants import C
+from .constants import BOARDS, C
 from .ui import ask, ask_choice, ask_yesno, validate_ssid, validate_not_empty, validate_host, validate_port, validate_url
+
+
+def board_choices() -> Dict[str, str]:
+    """Board prompt options, generated from the canonical BOARDS table."""
+    choices = {key: display for key, (display, *_rest) in BOARDS.items()}
+    choices["esp32dev"] += " — most common"
+    choices["other"] = "Other / not sure"
+    return choices
 
 
 def collect_scanner_config() -> Dict[str, Union[str, int]]:
     """Collect scanner configuration from user input."""
     print(f"\n{C.CYAN}── Scanner Configuration ──────────────{C.RESET}\n")
 
-    board = ask_choice("Scanner board:", {
-        "esp32dev": "ESP32-WROOM DevKit (4MB) — most common",
-        "esp32s3zero": "ESP32-S3-Zero by Waveshare (4MB)",
-        "esp32c3": "ESP32-C3 SuperMini / DevKitM-1 (4MB)",
-        "esp32s3devkitc": "ESP32-S3-DevKitC-1-N16R8 (16MB + 8MB PSRAM)",
-        "other": "Other / not sure",
-    })
+    board = ask_choice("Scanner board:", board_choices())
 
     if board == "other":
         print("\n  For unsupported boards, compile from source with PlatformIO:")
