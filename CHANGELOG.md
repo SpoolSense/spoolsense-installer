@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.3.0] - Unreleased
+## [1.3.0] - 2026-07-05
 
 ### Added
 - **Happy Hare MMU setup type** (middleware #83) — new "Happy Hare MMU" option generates the `happy_hare_stage` scanner action and `happy_hare:` config block (enabled + printer_name), requires a Spoolman URL, and creates the `spool.mmu_gate` (integer) and `spool.printer_name` (text) extra fields the middleware PATCHes at bind time. `--setup-fields --happy-hare` re-creates them standalone.
