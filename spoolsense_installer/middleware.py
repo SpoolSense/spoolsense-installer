@@ -191,6 +191,36 @@ def pin_repo_to_release(repo_dir: str, tag: str) -> bool:
     return result.returncode == 0
 
 
+def venv_python(venv_dir: str) -> str:
+    """Path to the python interpreter inside a venv (platform-aware)."""
+    if platform.system() == "Windows":
+        return os.path.join(venv_dir, "Scripts", "python.exe")
+    return os.path.join(venv_dir, "bin", "python")
+
+
+def ensure_venv(venv_dir: str) -> str:
+    """Create the venv if missing; return its python path.
+
+    Isolates middleware deps from the system interpreter — no more
+    --break-system-packages on Debian Bookworm (#21).
+    """
+    python = venv_python(venv_dir)
+    if os.path.exists(python):
+        return python
+
+    print(f"  Creating virtual environment at {venv_dir}...")
+    result = subprocess.run([sys.executable, "-m", "venv", venv_dir],
+                            capture_output=True, text=True)
+    if result.returncode != 0 or not os.path.exists(python):
+        print(f"  {C.RED}✗ Could not create a virtual environment{C.RESET}")
+        err = (result.stderr or result.stdout).strip()
+        if err:
+            print(f"    {err.splitlines()[-1]}")
+        print("    On Raspberry Pi / Debian: sudo apt install python3-venv")
+        raise InstallerError
+    return python
+
+
 def install(config_yaml: str, dev: bool = False) -> dict:
     """Clone SpoolSense middleware, install deps, write config, create service.
 
@@ -226,20 +256,21 @@ def install(config_yaml: str, dev: bool = False) -> dict:
         print(f"    {MIDDLEWARE_DIR} and running the installer again.")
         raise InstallerError
 
+    # Deps live in the middleware's own venv (#21) — never the system python
+    python = ensure_venv(os.path.join(MIDDLEWARE_DIR, ".venv"))
     try:
-        # --break-system-packages needed on Debian bookworm; 5min timeout for
-        # large dependency trees. Output streams so the user sees progress.
-        result = subprocess.run([sys.executable, "-m", "pip", "install",
-                                 "--break-system-packages", "-r", req_file],
+        # 5min timeout for large dependency trees; output streams so the
+        # user sees progress.
+        result = subprocess.run([python, "-m", "pip", "install", "-r", req_file],
                                 timeout=300)
     except subprocess.TimeoutExpired:
         print(f"  {C.RED}✗ pip install timed out after 5 minutes{C.RESET}")
-        print(f"    Try manually: pip3 install -r {req_file}")
+        print(f"    Try manually: {python} -m pip install -r {req_file}")
         raise InstallerError
 
     if result.returncode != 0:
         print(f"  {C.RED}✗ Failed to install Python dependencies{C.RESET}")
-        print(f"    Try manually: pip3 install -r {req_file}")
+        print(f"    Try manually: {python} -m pip install -r {req_file}")
         raise InstallerError
     print("  ✓ Dependencies installed")
 
@@ -261,7 +292,7 @@ def install(config_yaml: str, dev: bool = False) -> dict:
 
     service_status = None
     if platform.system() == "Linux" and shutil.which("systemctl"):
-        service_status = create_systemd_service()
+        service_status = create_systemd_service(python)
 
     return {"config": config_status, "service": service_status, "pinned": pinned}
 
@@ -278,6 +309,7 @@ def setup_moonraker_update_manager(conf_path: str = None) -> str:
     if conf_path is None:
         conf_path = MOONRAKER_CONF_PATH
 
+    # virtualenv/requirements let Moonraker update python deps with the repo
     block = f"""
 [update_manager spoolsense]
 type: git_repo
@@ -285,6 +317,8 @@ channel: stable
 path: {MIDDLEWARE_DIR}
 origin: {MIDDLEWARE_REPO}
 primary_branch: master
+virtualenv: {MIDDLEWARE_DIR}/.venv
+requirements: middleware/requirements.txt
 managed_services: spoolsense
 """
 
@@ -321,10 +355,13 @@ managed_services: spoolsense
         return "failed"
 
 
-def create_systemd_service() -> bool:
-    """Create and enable systemd service for SpoolSense middleware."""
-    # After=network-online.target ensures MQTT broker is reachable before starting
-    service_content = f"""[Unit]
+def service_content(python_path: str) -> str:
+    """The spoolsense.service systemd unit, running with the given python.
+
+    After=network-online.target ensures the MQTT broker is reachable before
+    starting.
+    """
+    return f"""[Unit]
 Description=SpoolSense Middleware
 After=network-online.target
 Wants=network-online.target
@@ -333,18 +370,25 @@ Wants=network-online.target
 Type=simple
 User={os.environ.get('USER', 'pi')}
 WorkingDirectory={MIDDLEWARE_DIR}/middleware
-ExecStart={sys.executable} {MIDDLEWARE_DIR}/middleware/spoolsense.py
+ExecStart={python_path} {MIDDLEWARE_DIR}/middleware/spoolsense.py
 Restart=on-failure
 RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
 """
+
+
+def create_systemd_service(python_path: str = None) -> bool:
+    """Create and enable systemd service for SpoolSense middleware."""
+    if python_path is None:
+        python_path = venv_python(os.path.join(MIDDLEWARE_DIR, ".venv"))
+    unit_text = service_content(python_path)
     service_path = "/etc/systemd/system/spoolsense.service"
     tmp_path = os.path.join(tempfile.gettempdir(), "spoolsense.service")
 
     with open(tmp_path, "w") as f:
-        f.write(service_content)
+        f.write(unit_text)
 
     print("  Creating systemd service...")
     try:

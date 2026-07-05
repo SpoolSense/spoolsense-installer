@@ -40,6 +40,9 @@ class UpdateManagerTest(unittest.TestCase):
         self.assertIn("primary_branch: master", content)
         self.assertIn("managed_services: spoolsense", content)
         self.assertIn("origin: https://github.com/SpoolSense/spoolsense_middleware.git", content)
+        # Venv options let Moonraker update python deps alongside the repo
+        self.assertIn("virtualenv:", content)
+        self.assertIn("requirements: middleware/requirements.txt", content)
 
     def test_existing_section_left_untouched(self):
         original = "[update_manager spoolsense]\ntype: git_repo\n# user tweaked\n"
