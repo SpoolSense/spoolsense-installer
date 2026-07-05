@@ -8,6 +8,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from spoolsense_installer.config import validate_printer_name, validate_toolhead_list
 from spoolsense_installer.middleware import generate_config
 from spoolsense_installer.spoolman import EXTRA_FIELDS, HAPPY_HARE_FIELDS, fields_for_setup
 
@@ -45,6 +46,24 @@ class HappyHareConfigTest(unittest.TestCase):
     def test_non_happy_hare_setup_has_no_block(self):
         yaml_text = generate_config(scanner_cfg(), middleware_cfg())
         self.assertNotIn("happy_hare:", yaml_text)
+
+
+class ScannerFieldsV2Test(unittest.TestCase):
+    def test_matches_firmware_required_fields_v2(self):
+        """#36: the installer's base field list must match the scanner
+        firmware's REQUIRED_EXTRA_FIELDS (fields version 2, 7 fields) so
+        fresh installs don't depend on the firmware's first-sync path."""
+        expected = {
+            ("filament", "aspect"): ("text", "Aspect/Finish"),
+            ("filament", "dry_temp"): ("text", "Dry Temp (C)"),
+            ("filament", "dry_time_hours"): ("text", "Dry Time (hrs)"),
+            ("spool", "nfc_id"): ("text", "nfc_id"),
+            ("spool", "tag_format"): ("text", "Tag Format"),
+            ("spool", "active_toolhead"): ("text", "active_toolhead"),
+            ("spool", "nfc_link"): ("text", "nfc_link"),
+        }
+        actual = {(e, k): (t, n) for e, k, t, n in EXTRA_FIELDS}
+        self.assertEqual(actual, expected)
 
 
 class ExtraFieldsSelectionTest(unittest.TestCase):
@@ -93,6 +112,22 @@ class ToolheadStageToolheadsTest(unittest.TestCase):
     def test_no_toolheads_key_when_absent(self):
         yaml_text = generate_config(scanner_cfg(), middleware_cfg())
         self.assertNotIn("toolheads:", yaml_text)
+
+
+class YamlSafeValidatorsTest(unittest.TestCase):
+    """printer_name and toolhead names are spliced into generated YAML via
+    f-strings — quotes/backslashes would silently corrupt config.yaml."""
+
+    def test_printer_name_rejects_yaml_breaking_chars(self):
+        self.assertIsNone(validate_printer_name("MyVoron 2.4"))
+        for bad in ('My "Voron"', "back\\slash", "", "line\nbreak"):
+            self.assertIsNotNone(validate_printer_name(bad), repr(bad))
+
+    def test_toolhead_list_allows_simple_names_only(self):
+        self.assertIsNone(validate_toolhead_list("T0,T1"))
+        self.assertIsNone(validate_toolhead_list("T0, extruder_1"))
+        for bad in ('T0,"T1"', "T0,,T1", "", "T0,ba d"):
+            self.assertIsNotNone(validate_toolhead_list(bad), repr(bad))
 
 
 class MobilePanelTest(unittest.TestCase):

@@ -9,15 +9,20 @@ import urllib.request
 from .constants import C, MOONRAKER_CONF_PATH
 from .ui import ask_yesno
 
-# Extra fields the scanner/middleware rely on. nfc_id enables spool lookup by tag
-# UID; tag_format tracks which NFC protocol was used; the filament fields carry
-# drying metadata written back from tags.
+# Extra fields the scanner/middleware rely on. Mirrors the scanner firmware's
+# REQUIRED_EXTRA_FIELDS (SpoolmanManager.cpp, fields version 2) — keys, types,
+# and display names must stay in sync so both creation paths produce identical
+# fields. nfc_id enables spool lookup by tag UID; tag_format tracks the NFC
+# protocol; active_toolhead tracks assignment; nfc_link stores the durable
+# user-link marker (scanner #218); the filament fields carry drying metadata.
 EXTRA_FIELDS = [
-    ("spool", "nfc_id", "text", "NFC Tag ID"),
-    ("spool", "tag_format", "text", "Tag Format"),
     ("filament", "aspect", "text", "Aspect/Finish"),
-    ("filament", "dry_temp", "text", "Dry Temp (°C)"),
+    ("filament", "dry_temp", "text", "Dry Temp (C)"),
     ("filament", "dry_time_hours", "text", "Dry Time (hrs)"),
+    ("spool", "nfc_id", "text", "nfc_id"),
+    ("spool", "tag_format", "text", "Tag Format"),
+    ("spool", "active_toolhead", "text", "active_toolhead"),
+    ("spool", "nfc_link", "text", "nfc_link"),
 ]
 
 # Happy Hare binding (middleware v1.7.3+): the middleware PATCHes these onto

@@ -27,8 +27,9 @@
 ### Changed
 - README: corrected Python requirement (3.9+, was "3.6+"), documented all four supported boards (ESP32-C3 and S3-DevKitC-1 were missing), the Config-only mode, `--setup-fields`, and the Web Flasher alternative.
 - ESP32-C3 board label aligned with spoolsense.org: "ESP32-C3 SuperMini / DevKitM-1".
-- pip dependency installation now streams its output instead of running silently (TODO P2).
-- Moonraker URL default in middleware setup is now `http://localhost:7125` (was a bare `http://localhost`) (TODO P2).
+- pip dependency installation now streams its output instead of running silently.
+- Moonraker URL default in middleware setup is now `http://localhost:7125` (was a bare `http://localhost`).
+- Spoolman extra-field list synced to scanner firmware fields v2 (#36): adds `spool.active_toolhead` and `spool.nfc_link` (durable user-link marker, scanner #218); display names now match the firmware's exactly.
 
 ---
 
