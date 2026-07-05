@@ -8,3 +8,5 @@ ollama_suggestions.md
 .mex/
 .DS_Store
 30dayplan.md
+build/
+*.egg-info/
