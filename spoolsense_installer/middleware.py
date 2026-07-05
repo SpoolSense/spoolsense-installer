@@ -12,6 +12,8 @@ import urllib.request
 
 from .constants import C, MIDDLEWARE_DIR, MIDDLEWARE_RELEASE_API, MIDDLEWARE_REPO, MOONRAKER_CONF_PATH
 from .ui import ask_yesno
+from .errors import InstallerError
+from .files import backup_file
 
 
 def generate_config(scanner_config: dict, middleware_config: dict) -> str:
@@ -222,7 +224,7 @@ def install(config_yaml: str, dev: bool = False) -> dict:
         print(f"  {C.RED}✗ requirements.txt not found at {req_file}{C.RESET}")
         print("    The middleware repository may be incomplete. Try deleting")
         print(f"    {MIDDLEWARE_DIR} and running the installer again.")
-        sys.exit(1)
+        raise InstallerError
 
     try:
         # --break-system-packages needed on Debian bookworm; 5min timeout for
@@ -233,12 +235,12 @@ def install(config_yaml: str, dev: bool = False) -> dict:
     except subprocess.TimeoutExpired:
         print(f"  {C.RED}✗ pip install timed out after 5 minutes{C.RESET}")
         print(f"    Try manually: pip3 install -r {req_file}")
-        sys.exit(1)
+        raise InstallerError
 
     if result.returncode != 0:
         print(f"  {C.RED}✗ Failed to install Python dependencies{C.RESET}")
         print(f"    Try manually: pip3 install -r {req_file}")
-        sys.exit(1)
+        raise InstallerError
     print("  ✓ Dependencies installed")
 
     # Config lives in SpoolSense root directory
@@ -250,6 +252,9 @@ def install(config_yaml: str, dev: bool = False) -> dict:
             print("  Keeping existing config.")
             config_status = "kept"
     if config_status == "written":
+        bak = backup_file(config_path)
+        if bak:
+            print(f"  {C.DIM}Backed up existing config to {bak}{C.RESET}")
         with open(config_path, "w") as f:
             f.write(config_yaml)
         print(f"  {C.GREEN}✓{C.RESET} Config written to {config_path}")
@@ -305,6 +310,7 @@ managed_services: spoolsense
         return "declined"
 
     try:
+        backup_file(conf_path)
         with open(conf_path, "a") as f:
             f.write(block)
         print(f"  {C.GREEN}✓{C.RESET} Added [update_manager spoolsense] to {conf_path}")

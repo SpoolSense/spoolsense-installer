@@ -8,6 +8,7 @@ import sys
 from typing import Dict, Union
 
 from .constants import SCRIPT_DIR
+from .errors import InstallerError
 
 
 def generate_nvs_csv(config: Dict[str, Union[str, int]]) -> str:
@@ -75,7 +76,7 @@ def generate_nvs_bin(csv_content: str, output_path: str, size: int = 0x5000) -> 
         print(f"    Tried: {' '.join(cmd)}")
         if hasattr(e, 'stderr') and e.stderr:
             print(f"    {e.stderr.strip()}")
-        sys.exit(1)
+        raise InstallerError
 
     os.remove(csv_path)
     return output_path

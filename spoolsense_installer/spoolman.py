@@ -7,6 +7,7 @@ import time
 import urllib.request
 
 from .constants import C, MOONRAKER_CONF_PATH
+from .files import backup_file
 from .ui import ask_yesno
 
 # Extra fields the scanner/middleware rely on. Mirrors the scanner firmware's
@@ -197,6 +198,7 @@ def setup_moonraker_spoolman(spoolman_url: str, conf_path: str = None) -> str:
         return "declined"
 
     try:
+        backup_file(conf_path)
         with open(conf_path, "a") as f:
             f.write("\n" + _spoolman_block(spoolman_url))
         print(f"  {C.GREEN}✓{C.RESET} Added [spoolman] to {conf_path}")

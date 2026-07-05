@@ -43,26 +43,35 @@ class MoonrakerSpoolmanTest(unittest.TestCase):
             if os.path.exists(conf):
                 with open(conf) as f:
                     content = f.read()
-            return status, content
+            bak = None
+            if os.path.exists(conf + ".bak"):
+                with open(conf + ".bak") as f:
+                    bak = f.read()
+            return status, content, bak
 
     def test_appends_block(self):
-        status, content = self._run("[server]\n")
+        status, content, _ = self._run("[server]\n")
         self.assertEqual(status, "added")
         self.assertIn("[spoolman]", content)
         self.assertIn(f"server: {self.URL}", content)
         self.assertIn("sync_rate: 5", content)
 
+    def test_backup_written_before_append(self):
+        """moonraker.conf is user-owned — keep a pre-change copy."""
+        _, _, bak = self._run("[server]\noriginal\n")
+        self.assertEqual(bak, "[server]\noriginal\n")
+
     def test_existing_section_untouched(self):
         original = "[spoolman]\nserver: http://old:7912\n"
-        status, content = self._run(original)
+        status, content, _ = self._run(original)
         self.assertEqual(status, "exists")
         self.assertEqual(content, original)
 
     def test_declined_and_missing(self):
-        status, content = self._run("[server]\n", answer=False)
+        status, content, _ = self._run("[server]\n", answer=False)
         self.assertEqual(status, "declined")
         self.assertEqual(content, "[server]\n")
-        status, _ = self._run(None)
+        status, _, _ = self._run(None)
         self.assertEqual(status, "missing-conf")
 
 

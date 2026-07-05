@@ -13,6 +13,7 @@ import urllib.request
 from typing import Optional
 
 from .constants import BOARDS, C, GITHUB_API, GITHUB_RELEASES_API
+from .errors import InstallerError
 
 # 16MB boards (S3-DevKitC) can exceed the old 2-minute budget at low baud rates
 FLASH_TIMEOUT = 300
@@ -41,7 +42,7 @@ def fetch_release(version: str = "") -> dict:
             print("    https://github.com/SpoolSense/spoolsense_scanner/releases")
         else:
             print("    Check your network connection and try again.")
-        sys.exit(1)
+        raise InstallerError
 
 
 def _verify_sha256(release: dict, asset_name: str, data: bytes) -> None:
@@ -60,7 +61,7 @@ def _verify_sha256(release: dict, asset_name: str, data: bytes) -> None:
             expected = resp.read().decode().split()[0].strip().lower()
     except Exception as e:  # noqa: BLE001
         print(f"\n  ✗ Could not download checksum for {asset_name}: {e}")
-        sys.exit(1)
+        raise InstallerError
 
     actual = hashlib.sha256(data).hexdigest()
     if actual != expected:
@@ -68,7 +69,7 @@ def _verify_sha256(release: dict, asset_name: str, data: bytes) -> None:
         print(f"    Expected: {expected}")
         print(f"    Got:      {actual}")
         print("    The download may be corrupted or tampered with. Aborting.")
-        sys.exit(1)
+        raise InstallerError
     print(f"  {C.GREEN}✓{C.RESET} SHA256 verified: {asset_name}")
 
 
@@ -86,11 +87,11 @@ def download_asset(release: dict, name: str = "", suffix: str = "") -> bytes:
                     data = resp.read()
             except Exception as e:
                 print(f"\n  ✗ Download failed: {e}")
-                sys.exit(1)
+                raise InstallerError
             # Verify completeness via GitHub metadata
             if expected_size and len(data) != expected_size:
                 print(f"\n  ✗ Download incomplete: got {len(data)} bytes, expected {expected_size}")
-                sys.exit(1)
+                raise InstallerError
             _verify_sha256(release, target_name, data)
             return data
 
@@ -98,7 +99,7 @@ def download_asset(release: dict, name: str = "", suffix: str = "") -> bytes:
     print("    Available assets:")
     for asset in release.get("assets", []):
         print(f"      {asset['name']}")
-    sys.exit(1)
+    raise InstallerError
 
 
 def detect_usb_port() -> Optional[str]:
@@ -126,7 +127,7 @@ def detect_usb_port() -> Optional[str]:
         print("")
         print("  Make sure the ESP32 is connected via USB and try again.")
         print("  If using an ESP32-S3, you may need to hold BOOT while connecting.")
-        sys.exit(1)
+        raise InstallerError
 
     if len(ports) == 1:
         print(f"  Found: {ports[0]}")
@@ -171,7 +172,7 @@ def verify_flash(port: Optional[str], board_key: str) -> bool:
         print(f"\n  ✗ Chip verification timed out — the device is not responding.")
         print("    Unplug and reconnect the USB cable, then try again.")
         print("    If using an ESP32-S3/C3, hold BOOT while connecting.")
-        sys.exit(1)
+        raise InstallerError
 
     output = result.stdout + result.stderr
 
@@ -181,7 +182,7 @@ def verify_flash(port: Optional[str], board_key: str) -> bool:
         for line in tail:
             print(f"    {line}")
         print("    Check the USB cable and serial permissions, then try again.")
-        sys.exit(1)
+        raise InstallerError
 
     # Prevent flashing wrong board variant (e.g. esp32s3 firmware on esp32 chip).
     # Match the chip FAMILY exactly — substring checks would accept esp32s3 for esp32.
@@ -191,7 +192,7 @@ def verify_flash(port: Optional[str], board_key: str) -> bool:
         print(f"\n  ✗ Could not identify the connected chip from esptool output.")
         print("    Refusing to flash an unverified device.")
         print("    Unplug and reconnect the USB cable, then try again.")
-        sys.exit(1)
+        raise InstallerError
 
     detected_family = family_match.group(1).lower().replace("-", "")
     detected_display = display_match.group(1) if display_match else family_match.group(1)
@@ -200,7 +201,7 @@ def verify_flash(port: Optional[str], board_key: str) -> bool:
         print(f"    Selected board: {board_name} (expects {expected_chip})")
         print(f"    Detected chip:  {detected_display}")
         print(f"    Please select the correct board type and try again.")
-        sys.exit(1)
+        raise InstallerError
     print(f"  Chip: {detected_display} ✓")
 
     # Flash size varies: 4MB minimum for most, 16MB for S3-DevKitC (PSRAM).
@@ -212,7 +213,7 @@ def verify_flash(port: Optional[str], board_key: str) -> bool:
         print(f"\n  ✗ Could not determine flash size from esptool output.")
         print("    Refusing to flash an unverified device.")
         print("    Unplug and reconnect the USB cable, then try again.")
-        sys.exit(1)
+        raise InstallerError
 
     flash_bytes = int(flash_match.group(1)) * 1024 * 1024
     if flash_bytes < min_flash:
@@ -220,7 +221,7 @@ def verify_flash(port: Optional[str], board_key: str) -> bool:
         print(f"    Required: {min_flash // (1024*1024)}MB")
         print(f"    Detected: {flash_match.group(1)}MB")
         print(f"    This board cannot run SpoolSense firmware.")
-        sys.exit(1)
+        raise InstallerError
     print(f"  Flash: {flash_match.group(1)}MB ✓")
 
     return True
@@ -265,7 +266,7 @@ def flash_firmware(port: Optional[str], board_key: str, firmware_bin: bytes,
             print(f"\n  ✗ Flashing timed out after {FLASH_TIMEOUT // 60} minutes.")
             print("    The device may be in a bad state — power-cycle it and")
             print("    run the installer again.")
-            sys.exit(1)
+            raise InstallerError
 
         if result.returncode != 0:
             print("\n  ✗ Flash failed!")
@@ -275,7 +276,7 @@ def flash_firmware(port: Optional[str], board_key: str, firmware_bin: bytes,
             print("    2. Press and release the RESET button")
             print("    3. Release the BOOT button")
             print("    4. Run the installer again")
-            sys.exit(1)
+            raise InstallerError
 
         print("\n  ✓ Firmware flashed successfully!")
     finally:

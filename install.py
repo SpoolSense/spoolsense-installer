@@ -20,6 +20,7 @@ import sys
 import tempfile
 
 from spoolsense_installer.constants import C, BOARDS, MIDDLEWARE_DIR
+from spoolsense_installer.errors import InstallerError
 from spoolsense_installer.ui import ask_choice, ask, validate_url
 from spoolsense_installer.config import collect_scanner_config, collect_middleware_config, collect_middleware_mqtt_settings
 from spoolsense_installer.nvs import generate_nvs_csv, generate_nvs_bin
@@ -272,6 +273,23 @@ def parse_args(argv=None) -> argparse.Namespace:
 
 
 def main() -> None:
+    """CLI entry point: run the install, translating failures to exit codes.
+
+    Library modules raise InstallerError (after printing their guidance)
+    instead of exiting — this is the only place that turns one into exit(1).
+    """
+    try:
+        _main()
+    except KeyboardInterrupt:
+        print("\n\nInstallation cancelled.")
+        sys.exit(1)
+    except InstallerError as e:
+        if str(e):
+            print(f"\n  {C.RED}✗ {e}{C.RESET}")
+        sys.exit(1)
+
+
+def _main() -> None:
     args = parse_args()
 
     if args.setup_fields:
@@ -387,8 +405,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("\n\nInstallation cancelled.")
-        sys.exit(1)
+    main()
