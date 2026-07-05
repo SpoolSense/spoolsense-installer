@@ -331,9 +331,35 @@ managed_services: spoolsense
     with open(conf_path, "r") as f:
         content = f.read()
 
-    if re.search(r"^\[update_manager spoolsense\]\s*$", content, re.MULTILINE):
-        print(f"  {C.GREEN}✓{C.RESET} Moonraker update_manager entry already exists — skipping")
-        return "exists"
+    match = re.search(r"^\[update_manager spoolsense\]\s*$", content, re.MULTILINE)
+    if match:
+        # Section extent: from the header to the next section header (or EOF)
+        next_sec = re.search(r"^\[", content[match.end():], re.MULTILINE)
+        section_end = match.end() + (next_sec.start() if next_sec else len(content) - match.end())
+        section = content[match.start():section_end]
+        if "virtualenv:" in section:
+            print(f"  {C.GREEN}✓{C.RESET} Moonraker update_manager entry already exists — skipping")
+            return "exists"
+
+        # Pre-venv block (v1.3.0): without virtualenv/requirements, Moonraker
+        # updates the repo but not the venv's python deps — upgrade in place.
+        print(f"\n  {C.YELLOW}Update needed:{C.RESET} your [update_manager spoolsense] entry predates")
+        print("  the virtualenv migration — Moonraker updates would skip python deps.\n")
+        if not ask_yesno("Upgrade [update_manager spoolsense] in moonraker.conf?", default=True):
+            print("  Skipped. Add virtualenv/requirements to the section manually.")
+            return "declined"
+        try:
+            backup_file(conf_path)
+            new_content = (content[:match.start()] + block.strip("\n") + "\n"
+                           + content[section_end:])
+            with open(conf_path, "w") as f:
+                f.write(new_content)
+            print(f"  {C.GREEN}✓{C.RESET} Upgraded [update_manager spoolsense] in {conf_path}")
+            print(f"  {C.YELLOW}Important:{C.RESET} restart Moonraker for this to take effect.")
+            return "upgraded"
+        except Exception as e:  # noqa: BLE001
+            print(f"  {C.RED}✗{C.RESET} Failed to upgrade moonraker.conf: {e}")
+            return "failed"
 
     print(f"\n  {C.YELLOW}Mainsail/Fluidd updates:{C.RESET} Moonraker's update manager can show")
     print("  SpoolSense middleware updates in the web UI and install them")

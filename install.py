@@ -167,6 +167,8 @@ def run_middleware_install(scanner_config: dict, middleware_config: dict, dev: b
     steps.append({
         "added": ("Moonraker update_manager entry", "warn", "restart Moonraker to apply"),
         "exists": ("Moonraker update_manager entry", "ok", "already configured"),
+        "upgraded": ("Moonraker update_manager entry", "warn",
+                     "upgraded for venv — restart Moonraker"),
         "declined": ("Moonraker update_manager entry", "skip", "declined"),
         "missing-conf": ("Moonraker update_manager entry", "warn",
                          "moonraker.conf not found — add manually"),
