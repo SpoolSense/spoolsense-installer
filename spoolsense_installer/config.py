@@ -86,6 +86,33 @@ def collect_scanner_config() -> Dict[str, Union[str, int]]:
         moonraker_url = ask("Moonraker URL", default="http://localhost:7125",
                             validate=validate_url)
 
+    prusalink_on, prusalink_url, prusalink_key = 0, "", ""
+    if ask_yesno("PrusaLink printer (MK4/XL/MINI)?", default=False):
+        prusalink_on = 1
+        prusalink_url = ask("PrusaLink URL", default="http://prusa.local",
+                            validate=validate_url)
+        prusalink_key = ask("PrusaLink API key (Settings → Network on the printer)",
+                            validate=validate_not_empty)
+
+    u1_on, u1_channel = 0, 0
+    if ask_yesno("Snapmaker U1 printer (direct mode)?", default=False):
+        u1_on = 1
+        u1_channel = int(ask("U1 material channel (0-3)", default=0,
+                             validate=lambda v: None if v.isdigit() and int(v) <= 3
+                             else "Must be 0-3"))
+
+    print(f"\n{C.CYAN}── Behavior ───────────────────────────{C.RESET}\n")
+
+    def validate_grams(value: str) -> Optional[str]:
+        return None if value.isdigit() else "Must be a non-negative number"
+
+    low_spool_g = int(ask("Low-spool alert threshold (grams)", default=100,
+                          validate=validate_grams))
+    bambu_dash = ask_yesno("Enable the Bambu AMS dashboard view?", default=False)
+    # Keep-awake trades battery/heat for lower scan latency
+    wifi_awake = ask_yesno("Keep WiFi always awake (faster scans, more power)?",
+                           default=False)
+
     return {
         "board": board,
         "hostname": hostname,
@@ -105,6 +132,14 @@ def collect_scanner_config() -> Dict[str, Union[str, int]]:
         "keypad_on": 1 if keypad_on else 0,
         "nfc_reader": nfc_reader,
         "moonraker_url": moonraker_url,
+        "wifi_awake": 1 if wifi_awake else 0,
+        "low_spool_g": low_spool_g,
+        "bambu_dash": 1 if bambu_dash else 0,
+        "prusalink_on": prusalink_on,
+        "prusalink_url": prusalink_url,
+        "prusalink_key": prusalink_key,
+        "u1_on": u1_on,
+        "u1_channel": u1_channel,
     }
 
 
@@ -129,8 +164,12 @@ def validate_toolhead_list(value: str) -> Optional[str]:
     return None
 
 
-def collect_middleware_config() -> Dict[str, Union[str, List[str]]]:
-    """Collect middleware configuration from user input."""
+def collect_middleware_config(low_spool_default: int = 100) -> Dict[str, Union[str, List[str]]]:
+    """Collect middleware configuration from user input.
+
+    ``low_spool_default`` seeds the threshold prompt (pass the scanner's
+    answer in combined installs so the two stay consistent by default).
+    """
     print(f"\n{C.CYAN}── Middleware Configuration ────────────{C.RESET}\n")
 
     setup_type = ask_choice("Scanner setup:", {
@@ -193,8 +232,8 @@ def collect_middleware_config() -> Dict[str, Union[str, List[str]]]:
     def validate_grams(value: str) -> Optional[str]:
         return None if value.isdigit() else "Must be a non-negative number"
 
-    low_spool_threshold = int(ask("Low-spool alert threshold (grams)", default=100,
-                                  validate=validate_grams))
+    low_spool_threshold = int(ask("Low-spool alert threshold (grams)",
+                                  default=low_spool_default, validate=validate_grams))
 
     # The middleware only accepts afc_stage/toolhead_stage/toolhead as the
     # mobile action — there is no happy_hare mobile action, so don't offer

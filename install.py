@@ -308,7 +308,8 @@ def main() -> None:
     if mode in ("both", "middleware"):
         if scanner_config is None:
             scanner_config = collect_middleware_mqtt_settings()
-        middleware_config = collect_middleware_config()
+        middleware_config = collect_middleware_config(
+            low_spool_default=scanner_config.get("low_spool_g", 100))
 
     setup_type = (middleware_config or {}).get("setup_type", "")
 

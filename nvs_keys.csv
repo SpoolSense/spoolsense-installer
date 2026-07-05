@@ -17,3 +17,11 @@ keypad_on,data,u8,3x4 matrix keypad enabled (1) or disabled (0)
 nfc_reader,data,string,NFC reader model: pn5180 (default) or pn532
 hostname,data,string,mDNS/WiFi hostname (default spoolsense; max 32 chars; lowercase alphanum + hyphens)
 moonraker_url,data,string,Moonraker URL for Klipper integration (e.g. http://printer.local:7125)
+wifi_awake,data,u8,Keep WiFi always awake: faster scans / more power (default 0)
+low_spool_g,data,u16,Low-spool alert threshold in grams (default 100)
+bambu_dash,data,u8,Bambu AMS dashboard view enabled (1) or disabled (0)
+prusalink_on,data,u8,PrusaLink integration enabled (1) or disabled (0)
+prusalink_url,data,string,PrusaLink base URL (e.g. http://prusa.local)
+prusalink_key,data,string,PrusaLink API key
+u1_on,data,u8,Snapmaker U1 direct mode enabled (1) or disabled (0)
+u1_channel,data,u8,Snapmaker U1 material channel (0-3)
