@@ -2,7 +2,8 @@
 
 import os
 
-GITHUB_API = "https://api.github.com/repos/SpoolSense/spoolsense_scanner/releases/latest"
+GITHUB_RELEASES_API = "https://api.github.com/repos/SpoolSense/spoolsense_scanner/releases"
+GITHUB_API = GITHUB_RELEASES_API + "/latest"
 SPOOLMAN_NFC_FIELD_KEY = "nfc_id"
 MIDDLEWARE_REPO = "https://github.com/SpoolSense/spoolsense_middleware.git"
 MIDDLEWARE_RELEASE_API = "https://api.github.com/repos/SpoolSense/spoolsense_middleware/releases/latest"

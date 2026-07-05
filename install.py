@@ -23,7 +23,7 @@ from spoolsense_installer.constants import C, BOARDS, MIDDLEWARE_DIR
 from spoolsense_installer.ui import ask_choice, ask, validate_url
 from spoolsense_installer.config import collect_scanner_config, collect_middleware_config, collect_middleware_mqtt_settings
 from spoolsense_installer.nvs import generate_nvs_csv, generate_nvs_bin
-from spoolsense_installer.firmware import fetch_latest_release, download_asset, detect_usb_port, verify_flash, flash_firmware
+from spoolsense_installer.firmware import fetch_release, download_asset, detect_usb_port, verify_flash, flash_firmware
 from spoolsense_installer.middleware import (generate_config as generate_middleware_config,
                                              install as install_middleware, copy_klipper_macros,
                                              setup_moonraker_update_manager)
@@ -33,12 +33,14 @@ from spoolsense_installer.spoolman import (setup_extra_fields, setup_moonraker_s
 
 # ── Install flow orchestration ───────────────────────────────────────────────
 
-def run_scanner_install(scanner_config: dict, setup_type: str = "") -> list:
+def run_scanner_install(scanner_config: dict, setup_type: str = "",
+                        firmware_version: str = "") -> list:
     """Download firmware, generate NVS, flash the ESP32.
 
     ``setup_type`` widens the Spoolman field set for mode-specific fields
-    (e.g. Happy Hare). Returns the list of Spoolman extra fields that could
-    NOT be created (empty if Spoolman setup was skipped or fully succeeded).
+    (e.g. Happy Hare); ``firmware_version`` pins a specific scanner release.
+    Returns the list of Spoolman extra fields that could NOT be created
+    (empty if Spoolman setup was skipped or fully succeeded).
     """
     board_key = scanner_config["board"]
     _, _, fw_suffix, _, _ = BOARDS[board_key]
@@ -46,7 +48,7 @@ def run_scanner_install(scanner_config: dict, setup_type: str = "") -> list:
     port = detect_usb_port()
     verify_flash(port, board_key)
 
-    release = fetch_latest_release()
+    release = fetch_release(version=firmware_version)
     firmware_bin = download_asset(release, suffix=fw_suffix)
     bootloader_bin = download_asset(release, name=f"bootloader_{fw_suffix}.bin")
     partitions_bin = download_asset(release, name=f"partitions_{fw_suffix}.bin")
@@ -260,6 +262,12 @@ def parse_args(argv=None) -> argparse.Namespace:
         action="store_true",
         help="Track the middleware branch head instead of pinning to the latest release.",
     )
+    parser.add_argument(
+        "--firmware-version",
+        default="",
+        metavar="X.Y.Z",
+        help="Flash a specific scanner firmware release instead of the latest.",
+    )
     return parser.parse_args(argv)
 
 
@@ -327,7 +335,8 @@ def main() -> None:
     failed_fields = []
     steps = []
     if mode in ("both", "scanner"):
-        failed_fields = run_scanner_install(scanner_config, setup_type)
+        failed_fields = run_scanner_install(scanner_config, setup_type,
+                                            firmware_version=args.firmware_version)
         steps.append(("Scanner firmware flashed", "ok",
                       BOARDS[scanner_config["board"]][0]))
         if scanner_config.get("spoolman_on") and scanner_config.get("spoolman_url"):

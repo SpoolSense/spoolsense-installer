@@ -1,6 +1,7 @@
 # firmware.py — GitHub release download, ESP32 chip verification, and firmware flashing
 
 import glob
+import hashlib
 import json
 import os
 import platform
@@ -11,23 +12,64 @@ import tempfile
 import urllib.request
 from typing import Optional
 
-from .constants import BOARDS, C, GITHUB_API
+from .constants import BOARDS, C, GITHUB_API, GITHUB_RELEASES_API
 
 # 16MB boards (S3-DevKitC) can exceed the old 2-minute budget at low baud rates
 FLASH_TIMEOUT = 300
 
 
-def fetch_latest_release() -> dict:
-    """Fetch latest release info from GitHub API."""
-    print("\n  Fetching latest release...")
+def fetch_release(version: str = "") -> dict:
+    """Fetch release info from GitHub: a specific tag if given, else latest.
+
+    ``version`` accepts "1.7.4" or "v1.7.4".
+    """
+    if version:
+        tag = version if version.startswith("v") else f"v{version}"
+        url = f"{GITHUB_RELEASES_API}/tags/{tag}"
+        print(f"\n  Fetching release {tag}...")
+    else:
+        url = GITHUB_API
+        print("\n  Fetching latest release...")
     try:
-        req = urllib.request.Request(GITHUB_API, headers={"Accept": "application/vnd.github.v3+json"})
+        req = urllib.request.Request(url, headers={"Accept": "application/vnd.github.v3+json"})
         with urllib.request.urlopen(req, timeout=15) as resp:
             return json.loads(resp.read().decode())
     except Exception as e:
         print(f"\n  ✗ Failed to fetch release info: {e}")
-        print("    Check your network connection and try again.")
+        if version:
+            print(f"    Check that release {version} exists:")
+            print("    https://github.com/SpoolSense/spoolsense_scanner/releases")
+        else:
+            print("    Check your network connection and try again.")
         sys.exit(1)
+
+
+def _verify_sha256(release: dict, asset_name: str, data: bytes) -> None:
+    """Verify data against the asset's .sha256 sidecar, if the release has one.
+
+    Fails closed on mismatch. Absence is tolerated — scanner releases predate
+    checksum publishing (tracked upstream) — so this hardens automatically
+    once the scanner's release workflow ships sidecars.
+    """
+    sidecar = next((a for a in release.get("assets", [])
+                    if a["name"] == f"{asset_name}.sha256"), None)
+    if sidecar is None:
+        return
+    try:
+        with urllib.request.urlopen(sidecar["browser_download_url"], timeout=30) as resp:
+            expected = resp.read().decode().split()[0].strip().lower()
+    except Exception as e:  # noqa: BLE001
+        print(f"\n  ✗ Could not download checksum for {asset_name}: {e}")
+        sys.exit(1)
+
+    actual = hashlib.sha256(data).hexdigest()
+    if actual != expected:
+        print(f"\n  ✗ Checksum mismatch for {asset_name}!")
+        print(f"    Expected: {expected}")
+        print(f"    Got:      {actual}")
+        print("    The download may be corrupted or tampered with. Aborting.")
+        sys.exit(1)
+    print(f"  {C.GREEN}✓{C.RESET} SHA256 verified: {asset_name}")
 
 
 def download_asset(release: dict, name: str = "", suffix: str = "") -> bytes:
@@ -49,6 +91,7 @@ def download_asset(release: dict, name: str = "", suffix: str = "") -> bytes:
             if expected_size and len(data) != expected_size:
                 print(f"\n  ✗ Download incomplete: got {len(data)} bytes, expected {expected_size}")
                 sys.exit(1)
+            _verify_sha256(release, target_name, data)
             return data
 
     print(f"\n  ✗ Asset '{target_name}' not found in release {release.get('tag_name', '?')}")
