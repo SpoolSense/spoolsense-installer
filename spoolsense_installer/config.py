@@ -108,6 +108,27 @@ def collect_scanner_config() -> Dict[str, Union[str, int]]:
     }
 
 
+# These values are interpolated into generated YAML (middleware.generate_config
+# uses f-strings, not a serializer) — reject anything that could break quoting.
+
+def validate_printer_name(value: str) -> Optional[str]:
+    if not value:
+        return "Cannot be empty"
+    if any(c in value for c in ('"', "\\")) or any(ord(c) < 32 for c in value):
+        return 'Cannot contain quotes, backslashes, or control characters'
+    return None
+
+
+def validate_toolhead_list(value: str) -> Optional[str]:
+    names = [t.strip() for t in value.split(",")]
+    if not names or any(not n for n in names):
+        return "Comma-separated names, e.g. T0,T1"
+    for n in names:
+        if not all(c.isalnum() or c in "_-" for c in n):
+            return f"'{n}' — only letters, numbers, hyphens, and underscores"
+    return None
+
+
 def collect_middleware_config() -> Dict[str, Union[str, List[str]]]:
     """Collect middleware configuration from user input."""
     print(f"\n{C.CYAN}── Middleware Configuration ────────────{C.RESET}\n")
@@ -118,10 +139,24 @@ def collect_middleware_config() -> Dict[str, Union[str, List[str]]]:
         "toolhead_stage": "Toolchanger shared scanner (scan spool, assign via macro or keypad)",
         "toolchanger": "Toolchanger per-toolhead scanners (one scanner per tool)",
         "single": "Single toolhead (one scanner, one extruder)",
+        "happy_hare": "Happy Hare MMU (scan spool, bind to the selected gate)",
     })
 
     scanners: list[dict] = []
-    if setup_type == "afc_stage":
+    printer_name = ""
+    toolheads: List[str] = []
+    if setup_type == "happy_hare":
+        print(f"\n  {C.YELLOW}Note:{C.RESET} Happy Hare must run in {C.BOLD}pull mode{C.RESET} (spoolman_support: pull).")
+        print("  Workflow: select a gate (MMU_SELECT_GATE GATE=N), scan a tag,")
+        print("  and the middleware binds the spool to that gate in Spoolman.\n")
+        print(f"  {C.YELLOW}Note:{C.RESET} After flashing your scanner, find its device ID")
+        print("  from the MQTT topic: spoolsense/<device_id>/tag/state\n")
+        # Written to each spool's extra.printer_name; Happy Hare uses it to
+        # identify this printer's spools when syncing from Spoolman.
+        printer_name = ask("Printer name (as Happy Hare knows it)",
+                           validate=validate_printer_name)
+        scanners.append({"action": "happy_hare_stage"})
+    elif setup_type == "afc_stage":
         print(f"\n  {C.YELLOW}Note:{C.RESET} After flashing your scanner, find its device ID")
         print("  from the MQTT topic: spoolsense/<device_id>/tag/state\n")
         scanners.append({"action": "afc_stage"})
@@ -137,9 +172,14 @@ def collect_middleware_config() -> Dict[str, Union[str, List[str]]]:
         print("  ASSIGN_SPOOL macro in Klipper console or the 3x4 keypad.\n")
         print(f"  {C.YELLOW}Note:{C.RESET} After flashing your scanner, find its device ID")
         print("  from the MQTT topic: spoolsense/<device_id>/tag/state\n")
+        # Explicit toolheads list (#24) — the mobile app picker needs it
+        th_str = ask("Toolheads (comma-separated)", default="T0,T1",
+                     validate=validate_toolhead_list)
+        toolheads = [t.strip() for t in th_str.split(",") if t.strip()]
         scanners.append({"action": "toolhead_stage"})
     elif setup_type == "toolchanger":
-        th_str = ask("Toolheads (comma-separated)", default="T0,T1")
+        th_str = ask("Toolheads (comma-separated)", default="T0,T1",
+                     validate=validate_toolhead_list)
         toolheads = [t.strip() for t in th_str.split(",") if t.strip()]
         print(f"\n  {C.YELLOW}Note:{C.RESET} After flashing your scanners, update config.yaml")
         print("  with each scanner's device ID from MQTT.\n")
@@ -148,7 +188,22 @@ def collect_middleware_config() -> Dict[str, Union[str, List[str]]]:
     elif setup_type == "single":
         scanners.append({"action": "toolhead", "toolhead": "T0"})
 
-    moonraker_url = ask("Moonraker URL", default="http://localhost", validate=validate_url)
+    moonraker_url = ask("Moonraker URL", default="http://localhost:7125", validate=validate_url)
+
+    def validate_grams(value: str) -> Optional[str]:
+        return None if value.isdigit() else "Must be a non-negative number"
+
+    low_spool_threshold = int(ask("Low-spool alert threshold (grams)", default=100,
+                                  validate=validate_grams))
+
+    # The middleware only accepts afc_stage/toolhead_stage/toolhead as the
+    # mobile action — there is no happy_hare mobile action, so don't offer
+    # the panel there (a generated fallback action would misroute HH scans).
+    mobile_enabled = False
+    if setup_type != "happy_hare":
+        print(f"\n  {C.YELLOW}Web config panel:{C.RESET} the middleware can serve a browser UI +")
+        print("  mobile REST API on port 5001 for editing config and mobile scans.\n")
+        mobile_enabled = ask_yesno("Enable the web config panel (port 5001)?", default=False)
 
     publish_lane_data = False
     if setup_type == "afc_stage":
@@ -159,7 +214,7 @@ def collect_middleware_config() -> Dict[str, Union[str, List[str]]]:
         print("  with a Box Turtle) and want slicer data for those tools too.")
         print("  This also enables the ASSIGN_SPOOL macro for tool assignment.\n")
         publish_lane_data = ask_yesno("Enable slicer integration for toolheads?", default=False)
-    elif setup_type not in ("afc_lane",):
+    elif setup_type not in ("afc_lane", "happy_hare"):
         print(f"\n  {C.YELLOW}Slicer integration:{C.RESET} Slicers like Orca Slicer can auto-populate")
         print("  tool colors, materials, and temps from your scanned spools.\n")
         publish_lane_data = ask_yesno("Enable slicer integration?", default=False)
@@ -167,7 +222,11 @@ def collect_middleware_config() -> Dict[str, Union[str, List[str]]]:
     return {
         "setup_type": setup_type,
         "scanners": scanners,
+        "printer_name": printer_name,
+        "toolheads": toolheads,
         "moonraker_url": moonraker_url,
+        "low_spool_threshold": low_spool_threshold,
+        "mobile_enabled": mobile_enabled,
         "publish_lane_data": publish_lane_data,
     }
 

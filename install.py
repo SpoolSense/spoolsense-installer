@@ -24,17 +24,21 @@ from spoolsense_installer.ui import ask_choice, ask, validate_url
 from spoolsense_installer.config import collect_scanner_config, collect_middleware_config, collect_middleware_mqtt_settings
 from spoolsense_installer.nvs import generate_nvs_csv, generate_nvs_bin
 from spoolsense_installer.firmware import fetch_latest_release, download_asset, detect_usb_port, verify_flash, flash_firmware
-from spoolsense_installer.middleware import generate_config as generate_middleware_config, install as install_middleware, copy_klipper_macros
-from spoolsense_installer.spoolman import setup_extra_fields, setup_moonraker_spoolman, print_failed_fields_summary
+from spoolsense_installer.middleware import (generate_config as generate_middleware_config,
+                                             install as install_middleware, copy_klipper_macros,
+                                             setup_moonraker_update_manager)
+from spoolsense_installer.spoolman import (setup_extra_fields, setup_moonraker_spoolman,
+                                           print_failed_fields_summary, fields_for_setup)
 
 
 # ── Install flow orchestration ───────────────────────────────────────────────
 
-def run_scanner_install(scanner_config: dict) -> list:
+def run_scanner_install(scanner_config: dict, setup_type: str = "") -> list:
     """Download firmware, generate NVS, flash the ESP32.
 
-    Returns the list of Spoolman extra fields that could not be created (empty
-    if Spoolman setup was skipped or fully succeeded).
+    ``setup_type`` widens the Spoolman field set for mode-specific fields
+    (e.g. Happy Hare). Returns the list of Spoolman extra fields that could
+    NOT be created (empty if Spoolman setup was skipped or fully succeeded).
     """
     board_key = scanner_config["board"]
     _, _, fw_suffix, _, _ = BOARDS[board_key]
@@ -72,7 +76,7 @@ def run_scanner_install(scanner_config: dict) -> list:
     spoolman_url = scanner_config.get("spoolman_url") or ""
     if scanner_config.get("spoolman_on") and spoolman_url:
         print(f"\n{C.CYAN}── Spoolman Setup ─────────────────────{C.RESET}\n")
-        return setup_extra_fields(spoolman_url)
+        return setup_extra_fields(spoolman_url, fields_for_setup(setup_type))
     return []
 
 
@@ -96,15 +100,17 @@ def run_config_only(scanner_config: dict) -> None:
     print(f"\n  Flash with: esptool write-flash 0x9000 {bin_path}")
 
 
-def run_middleware_install(scanner_config: dict, middleware_config: dict) -> list:
+def run_middleware_install(scanner_config: dict, middleware_config: dict, dev: bool = False) -> list:
     """Generate middleware config, install repo, create systemd service.
 
     Returns summary steps: a list of (label, status, detail) tuples.
     """
     config_yaml = generate_middleware_config(scanner_config, middleware_config)
-    result = install_middleware(config_yaml)
+    result = install_middleware(config_yaml, dev=dev)
 
-    steps = [("Middleware repo + dependencies", "ok", MIDDLEWARE_DIR)]
+    pinned = result.get("pinned")
+    version_note = f"{MIDDLEWARE_DIR} @ {pinned}" if pinned else f"{MIDDLEWARE_DIR} @ branch head"
+    steps = [("Middleware repo + dependencies", "ok", version_note)]
     config_path = os.path.join(MIDDLEWARE_DIR, "config.yaml")
     if result["config"] == "written":
         steps.append(("config.yaml written", "ok", config_path))
@@ -152,6 +158,20 @@ def run_middleware_install(scanner_config: dict, middleware_config: dict) -> lis
     if missing:
         steps.append(("Klipper macros missing from middleware checkout", "warn",
                       ", ".join(sorted(missing))))
+
+    # Mainsail/Fluidd update button (#16)
+    um_status = setup_moonraker_update_manager()
+    steps.append({
+        "added": ("Moonraker update_manager entry", "warn", "restart Moonraker to apply"),
+        "exists": ("Moonraker update_manager entry", "ok", "already configured"),
+        "declined": ("Moonraker update_manager entry", "skip", "declined"),
+        "missing-conf": ("Moonraker update_manager entry", "warn",
+                         "moonraker.conf not found — add manually"),
+        "failed": ("Moonraker update_manager entry", "fail", "could not write moonraker.conf"),
+    }[um_status])
+
+    if middleware_config.get("mobile_enabled"):
+        steps.append(("Web config panel", "ok", "http://<printer-host>:5001 after service start"))
     return steps
 
 
@@ -200,13 +220,14 @@ def print_completion_message(mode: str, scanner_config: dict, steps: list) -> No
 
 # ── Entry point ──────────────────────────────────────────────────────────────
 
-def run_setup_fields(spoolman_url: str) -> int:
+def run_setup_fields(spoolman_url: str, happy_hare: bool = False) -> int:
     """Re-run only Spoolman extra-field creation. Returns a process exit code."""
     if not spoolman_url:
         spoolman_url = ask("Spoolman URL (e.g. http://localhost:7912)", validate=validate_url)
 
     print(f"\n{C.CYAN}── Spoolman Field Setup ───────────────{C.RESET}\n")
-    failed = setup_extra_fields(spoolman_url)
+    failed = setup_extra_fields(
+        spoolman_url, fields_for_setup("happy_hare" if happy_hare else ""))
     if failed:
         print_failed_fields_summary(spoolman_url, failed)
         return 1
@@ -229,6 +250,16 @@ def parse_args(argv=None) -> argparse.Namespace:
         default="",
         help="Spoolman base URL (e.g. http://localhost:7912). Used with --setup-fields.",
     )
+    parser.add_argument(
+        "--happy-hare",
+        action="store_true",
+        help="With --setup-fields: also create the Happy Hare fields (mmu_gate, printer_name).",
+    )
+    parser.add_argument(
+        "--dev",
+        action="store_true",
+        help="Track the middleware branch head instead of pinning to the latest release.",
+    )
     return parser.parse_args(argv)
 
 
@@ -236,7 +267,7 @@ def main() -> None:
     args = parse_args()
 
     if args.setup_fields:
-        sys.exit(run_setup_fields(args.spoolman_url))
+        sys.exit(run_setup_fields(args.spoolman_url, happy_hare=args.happy_hare))
 
     if sys.version_info < (3, 9):
         print(f"\n  {C.RED}✗ Python 3.9 or newer is required.{C.RESET}")
@@ -279,10 +310,23 @@ def main() -> None:
             scanner_config = collect_middleware_mqtt_settings()
         middleware_config = collect_middleware_config()
 
+    setup_type = (middleware_config or {}).get("setup_type", "")
+
+    # Happy Hare binding writes spool extras — Spoolman is mandatory there.
+    # Check the enabled flag too: the middleware-only settings collector fills
+    # spoolman_url even when Spoolman was declined.
+    if setup_type == "happy_hare" and not (scanner_config.get("spoolman_on")
+                                           and scanner_config.get("spoolman_url")):
+        print(f"\n  {C.YELLOW}Happy Hare requires Spoolman{C.RESET} — the middleware binds spools")
+        print("  to MMU gates by writing Spoolman extra fields.\n")
+        scanner_config["spoolman_url"] = ask("Spoolman URL", default="http://spoolman.local:7912",
+                                             validate=validate_url)
+        scanner_config["spoolman_on"] = 1
+
     failed_fields = []
     steps = []
     if mode in ("both", "scanner"):
-        failed_fields = run_scanner_install(scanner_config)
+        failed_fields = run_scanner_install(scanner_config, setup_type)
         steps.append(("Scanner firmware flashed", "ok",
                       BOARDS[scanner_config["board"]][0]))
         if scanner_config.get("spoolman_on") and scanner_config.get("spoolman_url"):
@@ -298,8 +342,20 @@ def main() -> None:
         run_config_only(scanner_config)
         steps.append(("NVS config generated", "ok", "spoolsense_nvs.bin"))
 
+    # Middleware-only installs still need the extra fields (the scanner step
+    # that normally creates them didn't run)
+    if mode == "middleware" and scanner_config.get("spoolman_on") and scanner_config.get("spoolman_url"):
+        print(f"\n{C.CYAN}── Spoolman Setup ─────────────────────{C.RESET}\n")
+        failed_fields = setup_extra_fields(scanner_config["spoolman_url"],
+                                           fields_for_setup(setup_type))
+        if failed_fields:
+            steps.append(("Spoolman extra fields", "fail",
+                          f"{len(failed_fields)} field(s) not created — see below"))
+        else:
+            steps.append(("Spoolman extra fields", "ok", ""))
+
     if mode in ("both", "middleware"):
-        steps.extend(run_middleware_install(scanner_config, middleware_config))
+        steps.extend(run_middleware_install(scanner_config, middleware_config, dev=args.dev))
 
     # Moonraker Spoolman config (independent of mode)
     spoolman_url = scanner_config.get("spoolman_url") or ""

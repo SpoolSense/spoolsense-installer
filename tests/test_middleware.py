@@ -11,7 +11,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from spoolsense_installer.middleware import copy_klipper_macros, generate_config
 
-ALL_SETUP_TYPES = ("afc_stage", "afc_lane", "toolhead_stage", "toolchanger", "single")
+ALL_SETUP_TYPES = ("afc_stage", "afc_lane", "toolhead_stage", "toolchanger", "single",
+                   "happy_hare")
 
 MACRO_FILES = ("spoolsense.cfg", "spoolman_macros.cfg", "toolhead_macros_example.cfg")
 
@@ -55,7 +56,7 @@ class CopyKlipperMacrosTest(unittest.TestCase):
         for setup_type in ("single", "toolchanger", "toolhead_stage"):
             _, files = self._copy(setup_type)
             self.assertIn("spoolman_macros.cfg", files, setup_type)
-        for setup_type in ("afc_stage", "afc_lane"):
+        for setup_type in ("afc_stage", "afc_lane", "happy_hare"):
             _, files = self._copy(setup_type)
             self.assertNotIn("spoolman_macros.cfg", files, setup_type)
 
@@ -63,7 +64,7 @@ class CopyKlipperMacrosTest(unittest.TestCase):
         for setup_type in ("toolchanger", "toolhead_stage"):
             _, files = self._copy(setup_type)
             self.assertIn("toolhead_macros_example.cfg", files, setup_type)
-        for setup_type in ("single", "afc_stage", "afc_lane"):
+        for setup_type in ("single", "afc_stage", "afc_lane", "happy_hare"):
             _, files = self._copy(setup_type)
             self.assertNotIn("toolhead_macros_example.cfg", files, setup_type)
 

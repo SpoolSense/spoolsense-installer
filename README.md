@@ -25,8 +25,10 @@ The installer asks a series of questions (WiFi, MQTT, board type, etc.) and then
    - **Toolchanger shared scanner** (`toolhead_stage`) — one scanner for all toolheads (klipper-toolchanger)
    - **Toolchanger per-toolhead** (`toolhead`) — one scanner per tool
    - **Single toolhead** (`single`) — one scanner, one extruder
+   - **Happy Hare MMU** (`happy_hare_stage`) — one shared scanner; scan a spool to bind it to the currently selected MMU gate (requires Happy Hare in pull mode and Spoolman)
 3. **Klipper macros** — Copies the macros your setup needs to `~/printer_data/config/`: `spoolsense.cfg` (ASSIGN_SPOOL/UPDATE_TAG, all setups), `spoolman_macros.cfg` (direct-toolhead setups), and `toolhead_macros_example.cfg` (multi-tool setups). Add `UPDATE_TAG` to your `PRINT_END` macro for automatic filament tracking.
-4. **Spoolman** — Optionally creates extra fields in Spoolman (`nfc_id`, `tag_format`, `aspect`, `dry_temp`, `dry_time_hours`) needed for full tag data tracking, and offers to add the `[spoolman]` section to `moonraker.conf`
+4. **Spoolman** — Optionally creates extra fields in Spoolman (`nfc_id`, `tag_format`, `aspect`, `dry_temp`, `dry_time_hours`, plus `mmu_gate`/`printer_name` for Happy Hare) needed for full tag data tracking, and offers to add the `[spoolman]` section to `moonraker.conf`
+5. **Updates** — Offers to register the middleware with Moonraker's update manager (`[update_manager spoolsense]`, stable channel) so updates show up in Mainsail/Fluidd. Fresh installs are pinned to the latest middleware release (use `--dev` for branch head).
 
 ### Install modes
 
@@ -38,10 +40,16 @@ The installer asks a series of questions (WiFi, MQTT, board type, etc.) and then
 ### Extra flags
 
 ```bash
-python3 install.py --setup-fields [--spoolman-url http://spoolman.local:7912]
+python3 install.py --setup-fields [--spoolman-url http://spoolman.local:7912] [--happy-hare]
 ```
 
-Re-creates just the required Spoolman extra fields (useful if Spoolman wasn't running during the initial install).
+Re-creates just the required Spoolman extra fields (useful if Spoolman wasn't running during the initial install). `--happy-hare` also creates the `mmu_gate`/`printer_name` fields.
+
+```bash
+python3 install.py --dev
+```
+
+Tracks the middleware branch head instead of pinning to the latest release tag.
 
 
 ## Recommended Setup

@@ -5,6 +5,7 @@ import os
 GITHUB_API = "https://api.github.com/repos/SpoolSense/spoolsense_scanner/releases/latest"
 SPOOLMAN_NFC_FIELD_KEY = "nfc_id"
 MIDDLEWARE_REPO = "https://github.com/SpoolSense/spoolsense_middleware.git"
+MIDDLEWARE_RELEASE_API = "https://api.github.com/repos/SpoolSense/spoolsense_middleware/releases/latest"
 MIDDLEWARE_DIR = os.path.expanduser("~/SpoolSense")
 MOONRAKER_CONF_PATH = os.path.expanduser("~/printer_data/config/moonraker.conf")
 

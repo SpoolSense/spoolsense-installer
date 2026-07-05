@@ -3,6 +3,13 @@
 ## [1.3.0] - Unreleased
 
 ### Added
+- **Happy Hare MMU setup type** (middleware #83) — new "Happy Hare MMU" option generates the `happy_hare_stage` scanner action and `happy_hare:` config block (enabled + printer_name), requires a Spoolman URL, and creates the `spool.mmu_gate` (integer) and `spool.printer_name` (text) extra fields the middleware PATCHes at bind time. `--setup-fields --happy-hare` re-creates them standalone.
+- **Moonraker `[update_manager spoolsense]` entry** (#16) — the installer offers to register the middleware with Moonraker's update manager (`channel: stable`), giving users a one-click update button in Mainsail/Fluidd that follows tagged releases.
+- **Middleware pinned to the latest release** — fresh installs check out the latest middleware release tag instead of whatever is on branch head (only when the clone is clean; never touches local commits). `--dev` opts back into branch head.
+- **Low-spool threshold prompt** — `low_spool_threshold` is now asked (default 100 g) instead of hardcoded.
+- **Toolheads list for `toolhead_stage`** (#24) — shared toolchanger scanners now prompt for the toolhead list and write `toolheads:` so the mobile app picker stops falling back to defaults.
+- **Web config panel option** (middleware v1.7.0) — the installer can enable the middleware's browser UI / mobile REST API (`mobile:` block, port 5001) and surfaces the URL in the summary.
+- **Middleware-only installs now create Spoolman extra fields** — previously only the scanner path did, leaving middleware-only users without `nfc_id`.
 - **Robust Spoolman extra-field creation** (#17, #33) — waits for Spoolman to come up (~45s budget), retries transient failures with backoff, never silently skips a field, and prints a prominent summary with copy-paste `curl` commands for anything that failed. New `--setup-fields` flag re-runs just the field creation. *(shipped earlier on `main`, previously unlogged)*
 - **Klipper macros installed for every setup type** (#27, #30) — `spoolsense.cfg` (ASSIGN_SPOOL/UPDATE_TAG) is now copied for all setups, not just `toolhead_stage`; without it, automatic filament deduction never fires. `spoolman_macros.cfg` is copied for direct-toolhead setups and `toolhead_macros_example.cfg` for multi-tool setups (existing copies are never overwritten). The installer now prints PRINT_END/UPDATE_TAG guidance.
 - **Honest install summary** — the final message now lists every step with its actual outcome (✓/⚠/✗) instead of always claiming "SpoolSense is installed!". Failed systemd creation, skipped config writes, unwritten Moonraker config, and pending YOUR_DEVICE_ID edits are called out explicitly.
@@ -20,6 +27,9 @@
 ### Changed
 - README: corrected Python requirement (3.9+, was "3.6+"), documented all four supported boards (ESP32-C3 and S3-DevKitC-1 were missing), the Config-only mode, `--setup-fields`, and the Web Flasher alternative.
 - ESP32-C3 board label aligned with spoolsense.org: "ESP32-C3 SuperMini / DevKitM-1".
+- pip dependency installation now streams its output instead of running silently.
+- Moonraker URL default in middleware setup is now `http://localhost:7125` (was a bare `http://localhost`).
+- Spoolman extra-field list synced to scanner firmware fields v2 (#36): adds `spool.active_toolhead` and `spool.nfc_link` (durable user-link marker, scanner #218); display names now match the firmware's exactly.
 
 ---
 
