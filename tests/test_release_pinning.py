@@ -64,6 +64,20 @@ class PinRepoTest(unittest.TestCase):
             self.assertFalse(pin_repo_to_release(repo, "v1.7.3"))
             self.assertEqual(git(repo, "rev-parse", "HEAD"), head_before)
 
+    def test_refuses_dirty_worktree(self):
+        """reset --hard would destroy uncommitted edits even when HEAD ==
+        origin/master — a dirty worktree must block pinning."""
+        with tempfile.TemporaryDirectory() as root:
+            repo = make_repo(root)
+            edited = os.path.join(repo, "f.txt")
+            with open(edited, "w") as f:
+                f.write("uncommitted user edit\n")
+            head_before = git(repo, "rev-parse", "HEAD")
+            self.assertFalse(pin_repo_to_release(repo, "v1.7.3"))
+            self.assertEqual(git(repo, "rev-parse", "HEAD"), head_before)
+            with open(edited) as f:
+                self.assertEqual(f.read(), "uncommitted user edit\n")
+
     def test_refuses_unknown_tag(self):
         with tempfile.TemporaryDirectory() as root:
             repo = make_repo(root)

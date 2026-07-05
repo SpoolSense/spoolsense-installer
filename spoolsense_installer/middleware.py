@@ -177,7 +177,10 @@ def pin_repo_to_release(repo_dir: str, tag: str) -> bool:
     if not tag_sha:
         print(f"  {C.YELLOW}!{C.RESET} Release tag {tag} not found in clone — using branch head")
         return False
-    if head != upstream:
+    status = subprocess.run(["git", "-C", repo_dir, "status", "--porcelain"],
+                            capture_output=True, text=True)
+    dirty = status.returncode != 0 or bool(status.stdout.strip())
+    if head != upstream or dirty:
         print(f"  {C.YELLOW}!{C.RESET} Local changes detected in {repo_dir} — not pinning to {tag}")
         return False
     # reset (not checkout) keeps us on the master branch, which Moonraker's
