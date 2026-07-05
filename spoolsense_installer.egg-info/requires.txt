@@ -1,0 +1,2 @@
+esptool>=4.6
+esp-idf-nvs-partition-gen>=0.1.2

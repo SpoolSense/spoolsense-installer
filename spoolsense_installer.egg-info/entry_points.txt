@@ -1,0 +1,2 @@
+[console_scripts]
+spoolsense-install = install:main
