@@ -12,7 +12,7 @@ the middleware (choose "Middleware only").
 Note: SpoolSense middleware must run on the printer host.
 """
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 
 import argparse
 import os

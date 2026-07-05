@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.4.0] - Unreleased
+
+### Added
+- **All firmware v1.7.x NVS keys are now provisionable** — WiFi keep-awake, low-spool grams, Bambu dashboard, PrusaLink (URL + API key), and Snapmaker U1 (channel 0-3), gated behind feature questions so the default flow barely grows. Previously these were only settable via the scanner's AP-mode web UI.
+- **`--firmware-version X.Y.Z`** — flash a specific scanner release instead of always trusting `releases/latest`; installs become reproducible.
+- **SHA256 verification of firmware downloads** — assets are checked against their `.sha256` sidecar when the release publishes one, failing closed on mismatch. (Scanner releases don't ship sidecars yet; verification activates automatically when they do.)
+- **pip-installable** — `pyproject.toml` with a `spoolsense-install` console entry point and pinned-minimum deps.
+- **Config backups** — `config.yaml` and `moonraker.conf` get a `.bak` copy before the installer modifies them.
+
+### Changed
+- **Virtualenv everywhere (#21)** — middleware deps install into `~/SpoolSense/.venv` (systemd unit runs the venv python), the installer bootstraps its own venv, and `--break-system-packages` is gone. The `[update_manager spoolsense]` entry now includes `virtualenv`/`requirements` so Moonraker updates deps alongside the repo.
+- Library modules raise a typed `InstallerError` instead of calling `sys.exit()` — failures are testable and cleanup runs; the CLI entry point owns process exit.
+- The board prompt is generated from the single `BOARDS` table and the Moonraker `[spoolman]` block from one helper (previously three hand-synced copies).
+
+---
+
 ## [1.3.0] - 2026-07-05
 
 ### Added

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "spoolsense-installer"
-version = "1.3.0"
+version = "1.4.0"
 description = "Interactive CLI installer for the SpoolSense ecosystem — ESP32 scanner firmware + Klipper middleware"
 readme = "README.md"
 license = { text = "GPL-3.0-or-later" }
