@@ -10,6 +10,8 @@ import sys
 import tempfile
 import urllib.request
 
+import yaml
+
 from .constants import C, MIDDLEWARE_DIR, MIDDLEWARE_RELEASE_API, MIDDLEWARE_REPO, MOONRAKER_CONF_PATH
 from .ui import ask_yesno
 from .errors import InstallerError
@@ -17,94 +19,87 @@ from .files import backup_file
 
 
 def generate_config(scanner_config: dict, middleware_config: dict) -> str:
-    """Generate middleware config.yaml from collected settings."""
-    # Scanner device ID maps to action type; action determines MQTT→Klipper behavior
-    scanners = middleware_config.get("scanners", [])
-    scanner_lines: list[str] = []
-    for i, s in enumerate(scanners):
-        # Placeholder until scanner is flashed and MQTT topic is available
-        device_id = f"YOUR_DEVICE_ID_{i + 1}" if len(scanners) > 1 else "YOUR_DEVICE_ID"
-        scanner_lines.append(f'  "{device_id}":')
-        scanner_lines.append(f'    action: "{s["action"]}"')
-        # Lane/toolhead parameters route scan events to specific AFC lane or toolhead
-        if "lane" in s:
-            scanner_lines.append(f'    lane: "{s["lane"]}"')
-        if "toolhead" in s:
-            scanner_lines.append(f'    toolhead: "{s["toolhead"]}"')
-    scanners_yaml = "\n".join(scanner_lines)
+    """Generate middleware config.yaml from collected settings.
 
+    Built as a dict and serialized with yaml.safe_dump — user-entered values
+    (passwords especially) may contain quotes/backslashes/# that would corrupt
+    hand-interpolated YAML.
+    """
     setup_type = middleware_config.get("setup_type", "")
-
-    # Happy Hare pull-mode binding (middleware v1.7.3+) needs its own section;
-    # the middleware refuses to bind without enabled + printer_name.
-    happy_hare_yaml = ""
-    if setup_type == "happy_hare":
-        happy_hare_yaml = f"""
-# Happy Hare MMU integration — requires pull mode and the mmu_gate /
-# printer_name extra fields in Spoolman (the installer creates them).
-happy_hare:
-  enabled: true
-  printer_name: "{middleware_config.get('printer_name', '')}"
-"""
-
-    # Explicit toolheads list (issue #24) — the mobile app picker reads it;
-    # without it, shared-scanner setups fall back to hardcoded defaults.
-    toolheads_yaml = ""
     toolheads = middleware_config.get("toolheads") or []
+
+    # Scanner device ID maps to action type; action determines MQTT→Klipper
+    # behavior. Placeholder IDs until the scanner is flashed and on MQTT.
+    scanners = middleware_config.get("scanners", [])
+    scanners_map = {}
+    for i, s in enumerate(scanners):
+        device_id = s.get("device_id") or (
+            f"YOUR_DEVICE_ID_{i + 1}" if len(scanners) > 1 else "YOUR_DEVICE_ID")
+        entry = {"action": s["action"]}
+        # Lane/toolhead parameters route scans to a specific AFC lane or tool
+        if "lane" in s:
+            entry["lane"] = s["lane"]
+        if "toolhead" in s:
+            entry["toolhead"] = s["toolhead"]
+        scanners_map[device_id] = entry
+
+    cfg = {
+        "mqtt": {
+            "broker": scanner_config["mqtt_host"],
+            "port": scanner_config["mqtt_port"],
+            "username": scanner_config["mqtt_user"],
+            "password": scanner_config["mqtt_pass"],
+        },
+        "spoolman_url": scanner_config["spoolman_url"],
+        "moonraker_url": middleware_config["moonraker_url"],
+        # Alerts when filament falls below this many grams
+        "low_spool_threshold": middleware_config.get("low_spool_threshold", 100),
+        # Must match the scanner firmware's compile-time MQTT topic prefix
+        "scanner_topic_prefix": "spoolsense",
+    }
+
+    # Happy Hare pull-mode binding (middleware v1.7.3+): the middleware
+    # refuses to bind without enabled + printer_name.
+    if setup_type == "happy_hare":
+        cfg["happy_hare"] = {
+            "enabled": True,
+            "printer_name": middleware_config.get("printer_name", ""),
+        }
+
+    cfg["scanners"] = scanners_map
+
+    # Explicit toolheads list (issue #24) — the mobile app picker reads it
     if toolheads:
-        entries = "\n".join(f'  - "{t}"' for t in toolheads)
-        toolheads_yaml = f"\ntoolheads:\n{entries}\n"
+        cfg["toolheads"] = list(toolheads)
 
     # Web config panel / mobile REST API (middleware v1.7.0+, port 5001)
-    mobile_yaml = ""
     if middleware_config.get("mobile_enabled"):
         if setup_type in ("afc_stage", "afc_lane"):
-            mobile_action_lines = '  action: "afc_stage"'
+            mobile = {"enabled": True, "action": "afc_stage"}
         elif setup_type == "toolhead_stage":
-            mobile_action_lines = '  action: "toolhead_stage"'
+            mobile = {"enabled": True, "action": "toolhead_stage"}
         else:
-            first_toolhead = toolheads[0] if toolheads else "T0"
-            mobile_action_lines = f'  action: "toolhead"\n  toolhead: "{first_toolhead}"'
-        mobile_yaml = f"""
-# Web config panel + mobile REST API — http://<printer-host>:5001
-mobile:
-  enabled: true
-{mobile_action_lines}
-  port: 5001
-"""
+            mobile = {"enabled": True, "action": "toolhead",
+                      "toolhead": toolheads[0] if toolheads else "T0"}
+        mobile["port"] = 5001
+        cfg["mobile"] = mobile
 
-    # low_spool_threshold triggers alerts when filament falls below grams threshold
-    low_spool = middleware_config.get("low_spool_threshold", 100)
+    # Slicer integration — publish spool data to Moonraker's lane_data database
+    cfg["publish_lane_data"] = bool(middleware_config.get("publish_lane_data", False))
 
-    config_yaml = f"""# Generated by SpoolSense Installer
-# https://github.com/SpoolSense/spoolsense-installer
-#
-# After flashing your scanner(s), find each device ID from MQTT:
-#   spoolsense/<device_id>/tag/state
-# Replace YOUR_DEVICE_ID below with the actual device ID.
-
-mqtt:
-  broker: "{scanner_config['mqtt_host']}"
-  port: {scanner_config['mqtt_port']}
-  username: "{scanner_config['mqtt_user']}"
-  password: "{scanner_config['mqtt_pass']}"
-
-spoolman_url: "{scanner_config['spoolman_url']}"
-
-moonraker_url: "{middleware_config['moonraker_url']}"
-
-low_spool_threshold: {low_spool}
-
-# Must match the scanner firmware's compile-time MQTT topic prefix
-scanner_topic_prefix: "spoolsense"
-{happy_hare_yaml}
-scanners:
-{scanners_yaml}
-{toolheads_yaml}{mobile_yaml}
-# Slicer integration — publish spool data to Moonraker's lane_data database
-publish_lane_data: {str(middleware_config.get('publish_lane_data', False)).lower()}
-"""
-    return config_yaml
+    placeholder_note = ""
+    if any(d.startswith("YOUR_DEVICE_ID") for d in scanners_map):
+        placeholder_note = (
+            "#\n"
+            "# After flashing your scanner(s), find each device ID from MQTT:\n"
+            "#   spoolsense/<device_id>/tag/state\n"
+            "# Replace YOUR_DEVICE_ID below with the actual device ID.\n"
+        )
+    header = ("# Generated by SpoolSense Installer\n"
+              "# https://github.com/SpoolSense/spoolsense-installer\n"
+              + placeholder_note + "\n")
+    return header + yaml.safe_dump(cfg, sort_keys=False, default_flow_style=False,
+                                   allow_unicode=True)
 
 
 # Which shipped macro files each setup type needs. spoolsense.cfg carries

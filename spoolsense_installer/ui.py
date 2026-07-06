@@ -1,6 +1,7 @@
 # ui.py — terminal input helpers and validators for interactive prompts
 
 import getpass
+import urllib.parse
 from typing import Callable, Dict, Optional
 
 from .constants import C
@@ -137,21 +138,28 @@ def validate_port(value: str) -> Optional[str]:
 
 
 def validate_url(value: str) -> Optional[str]:
-    """Validate an HTTP/HTTPS URL with host validation."""
+    """Validate an HTTP/HTTPS URL with host validation (urllib.parse-based)."""
     if not value:
         return "Cannot be empty"
-    if not value.startswith("http://") and not value.startswith("https://"):
+    try:
+        parsed = urllib.parse.urlsplit(value)
+    except ValueError:
+        # e.g. unbalanced IPv6 brackets — a typo must re-prompt, not traceback
+        return "Not a valid URL"
+    if parsed.scheme not in ("http", "https"):
         return "Must start with http:// or https://"
-    # Extract host — strip scheme, path, and optional port
-    remainder = value.split("://", 1)[1]
-    host_port = remainder.split("/", 1)[0]
-    host = host_port.rsplit(":", 1)[0] if ":" in host_port else host_port
+    try:
+        port = parsed.port  # raises ValueError on non-numeric/out-of-range
+    except ValueError:
+        return "Invalid port in URL: must be a number between 1 and 65535"
+    if port == 0:
+        return "Invalid port in URL: Port must be between 1 and 65535"
+    host = parsed.hostname
+    if not host:
+        return "Invalid host in URL: Cannot be empty"
+    if ":" in host:
+        return None  # bracketed IPv6 literal — urlsplit already validated it
     err = validate_host(host)
     if err:
         return f"Invalid host in URL: {err}"
-    if ":" in host_port:
-        port_str = host_port.rsplit(":", 1)[1]
-        port_err = validate_port(port_str)
-        if port_err:
-            return f"Invalid port in URL: {port_err}"
     return None

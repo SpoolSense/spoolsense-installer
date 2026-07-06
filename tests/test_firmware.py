@@ -207,6 +207,23 @@ class FetchReleaseTest(unittest.TestCase):
         self.assertIn("/releases/latest", seen["url"])
 
 
+class DetectUsbPortTest(unittest.TestCase):
+    def test_eof_during_port_selection_aborts_cleanly(self):
+        """Non-interactive stdin used to spin the selection prompt forever."""
+        first = {"done": False}
+
+        def fake_glob(pattern):
+            if first["done"]:
+                return []
+            first["done"] = True
+            return ["/dev/ttyUSB0", "/dev/ttyUSB1"]
+
+        with mock.patch.object(firmware.glob, "glob", side_effect=fake_glob), \
+             mock.patch("builtins.input", side_effect=EOFError):
+            with self.assertRaises(InstallerError):
+                firmware.detect_usb_port()
+
+
 class FlashFirmwareTest(unittest.TestCase):
     def test_exits_cleanly_on_timeout(self):
         """A flash that exceeds the timeout must exit with a message, not a traceback."""

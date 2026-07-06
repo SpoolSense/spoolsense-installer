@@ -16,11 +16,14 @@ __version__ = "1.4.0"
 
 import argparse
 import os
+import shutil
 import sys
 import tempfile
 
 from spoolsense_installer.constants import C, BOARDS, MIDDLEWARE_DIR
 from spoolsense_installer.errors import InstallerError
+from spoolsense_installer.preflight import preflight_checks, run_preflight
+from spoolsense_installer.discovery import prompt_device_ids
 from spoolsense_installer.ui import ask_choice, ask, validate_url
 from spoolsense_installer.config import collect_scanner_config, collect_middleware_config, collect_middleware_mqtt_settings
 from spoolsense_installer.nvs import generate_nvs_csv, generate_nvs_bin
@@ -54,26 +57,24 @@ def run_scanner_install(scanner_config: dict, setup_type: str = "",
     bootloader_bin = download_asset(release, name=f"bootloader_{fw_suffix}.bin")
     partitions_bin = download_asset(release, name=f"partitions_{fw_suffix}.bin")
 
-    nvs_csv = generate_nvs_csv(scanner_config)
-    nvs_path = os.path.join(tempfile.gettempdir(), "spoolsense_nvs.bin")
-    generate_nvs_bin(nvs_csv, nvs_path)
-
-    # Write temp files for bootloader/partitions (flash_firmware needs file paths)
-    temp_paths = []
-    boot_path = os.path.join(tempfile.gettempdir(), f"bootloader_{fw_suffix}.bin")
-    part_path = os.path.join(tempfile.gettempdir(), f"partitions_{fw_suffix}.bin")
-    with open(boot_path, "wb") as f:
-        f.write(bootloader_bin)
-    with open(part_path, "wb") as f:
-        f.write(partitions_bin)
-    temp_paths.extend([boot_path, part_path, nvs_path])
-
+    # Private working dir: no collisions between concurrent runs, no stale
+    # sensitive config in the shared temp dir after a crash
+    workdir = tempfile.mkdtemp(prefix="spoolsense-install-")
     try:
+        nvs_csv = generate_nvs_csv(scanner_config)
+        nvs_path = os.path.join(workdir, "spoolsense_nvs.bin")
+        generate_nvs_bin(nvs_csv, nvs_path)
+
+        boot_path = os.path.join(workdir, f"bootloader_{fw_suffix}.bin")
+        part_path = os.path.join(workdir, f"partitions_{fw_suffix}.bin")
+        with open(boot_path, "wb") as f:
+            f.write(bootloader_bin)
+        with open(part_path, "wb") as f:
+            f.write(partitions_bin)
+
         flash_firmware(port, board_key, firmware_bin, nvs_path, part_path, boot_path)
     finally:
-        for p in temp_paths:
-            if os.path.exists(p):
-                os.unlink(p)
+        shutil.rmtree(workdir, ignore_errors=True)
 
     # Setup Spoolman extra fields if enabled
     spoolman_url = scanner_config.get("spoolman_url") or ""
@@ -108,6 +109,10 @@ def run_middleware_install(scanner_config: dict, middleware_config: dict, dev: b
 
     Returns summary steps: a list of (label, status, detail) tuples.
     """
+    # Resolve real device IDs from retained MQTT topics before writing config —
+    # most installs never need to touch YOUR_DEVICE_ID by hand anymore
+    prompt_device_ids(middleware_config.get("scanners", []), scanner_config, ask)
+
     config_yaml = generate_middleware_config(scanner_config, middleware_config)
     result = install_middleware(config_yaml, dev=dev)
 
@@ -117,8 +122,9 @@ def run_middleware_install(scanner_config: dict, middleware_config: dict, dev: b
     config_path = os.path.join(MIDDLEWARE_DIR, "config.yaml")
     if result["config"] == "written":
         steps.append(("config.yaml written", "ok", config_path))
-        steps.append(("Replace YOUR_DEVICE_ID in config.yaml", "warn",
-                      "device ID shown at http://spoolsense.local"))
+        if "YOUR_DEVICE_ID" in config_yaml:
+            steps.append(("Replace YOUR_DEVICE_ID in config.yaml", "warn",
+                          "device ID shown at http://spoolsense.local"))
     else:
         steps.append(("config.yaml kept (existing file untouched)", "skip", config_path))
 
@@ -323,9 +329,12 @@ def _main() -> None:
     mode = ask_choice("What do you want to install?", {
         "both": "Scanner + Middleware (recommended)",
         "scanner": "Scanner only",
-        "middleware": "Middleware only",
+        "middleware": "Middleware only (also after using the Web Flasher)",
         "config": f"{C.RED}Config only (source builds){C.RESET} — write NVS config for OTA compatibility",
     })
+
+    # Verify the host can finish this install BEFORE asking 20 questions
+    run_preflight(preflight_checks(mode))
 
     scanner_config = None
     middleware_config = None

@@ -137,7 +137,12 @@ def detect_usb_port() -> Optional[str]:
     for i, port in enumerate(ports, 1):
         print(f"    [{i}] {port}")
     while True:
-        choice = input("  Select port: ").strip()
+        try:
+            choice = input("  Select port: ").strip()
+        except EOFError:
+            # Non-interactive stdin — never spin on a prompt nobody can answer
+            print("\n  ✗ Cannot select a port: input is not interactive.")
+            raise InstallerError
         try:
             idx = int(choice) - 1
             if 0 <= idx < len(ports):
