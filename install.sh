@@ -51,10 +51,21 @@ else
     git clone --quiet "$REPO_URL" "$INSTALL_DIR"
 fi
 
-# Install Python dependencies
+# Install Python dependencies into the installer's own venv — never the
+# system interpreter (PEP 668 / Debian Bookworm)
+VENV_DIR="$INSTALL_DIR/.venv"
+if [ ! -x "$VENV_DIR/bin/python" ]; then
+    echo "Creating virtual environment..."
+    if ! python3 -m venv "$VENV_DIR"; then
+        echo "ERROR: could not create a virtual environment."
+        echo "  Raspberry Pi / Debian: sudo apt install python3-venv"
+        exit 1
+    fi
+fi
 echo "Installing dependencies..."
-pip3 install --quiet --break-system-packages esptool esp-idf-nvs-partition-gen 2>/dev/null || pip3 install --quiet esptool esp-idf-nvs-partition-gen
+"$VENV_DIR/bin/pip" install --quiet --upgrade esptool esp-idf-nvs-partition-gen
 
-# Run the installer
+# Run the installer with the venv python so esptool/nvs-gen module
+# fallbacks (python -m ...) resolve inside the venv
 echo ""
-python3 "$INSTALL_DIR/install.py" "$@" < /dev/tty
+"$VENV_DIR/bin/python" "$INSTALL_DIR/install.py" "$@" < /dev/tty

@@ -7,6 +7,7 @@ import time
 import urllib.request
 
 from .constants import C, MOONRAKER_CONF_PATH
+from .files import backup_file
 from .ui import ask_yesno
 
 # Extra fields the scanner/middleware rely on. Mirrors the scanner firmware's
@@ -155,7 +156,15 @@ def print_failed_fields_summary(spoolman_url: str, failed: list) -> None:
         print(f"      -d '{payload}'\n")
 
 
-def setup_moonraker_spoolman(spoolman_url: str) -> str:
+def _spoolman_block(spoolman_url: str) -> str:
+    """The [spoolman] moonraker.conf section — single source for all paths.
+
+    sync_rate: 5 syncs filament usage every 5 seconds during prints.
+    """
+    return f"[spoolman]\nserver: {spoolman_url}\nsync_rate: 5\n"
+
+
+def setup_moonraker_spoolman(spoolman_url: str, conf_path: str = None) -> str:
     """Offer to add [spoolman] section to moonraker.conf if not already present.
 
     Moonraker's built-in Spoolman integration tracks filament usage in real-time
@@ -163,15 +172,16 @@ def setup_moonraker_spoolman(spoolman_url: str) -> str:
 
     Returns one of: "added", "exists", "declined", "missing-conf", "failed".
     """
-    if not os.path.exists(MOONRAKER_CONF_PATH):
-        print(f"  {C.YELLOW}!{C.RESET} moonraker.conf not found at {MOONRAKER_CONF_PATH}")
+    if conf_path is None:
+        conf_path = MOONRAKER_CONF_PATH
+
+    if not os.path.exists(conf_path):
+        print(f"  {C.YELLOW}!{C.RESET} moonraker.conf not found at {conf_path}")
         print(f"    If your moonraker.conf is in a different location, add this manually:")
-        print(f"    [spoolman]")
-        print(f"    server: {spoolman_url}")
-        print(f"    sync_rate: 5")
+        print("    " + _spoolman_block(spoolman_url).replace("\n", "\n    ").rstrip())
         return "missing-conf"
 
-    with open(MOONRAKER_CONF_PATH, "r") as f:
+    with open(conf_path, "r") as f:
         content = f.read()
 
     if re.search(r'^\[spoolman\]\s*$', content, re.MULTILINE):
@@ -187,21 +197,18 @@ def setup_moonraker_spoolman(spoolman_url: str) -> str:
         print(f"  Skipped. You can add it manually later.")
         return "declined"
 
-    # sync_rate: 5 syncs filament usage every 5 seconds during prints
-    spoolman_block = f"\n[spoolman]\nserver: {spoolman_url}\nsync_rate: 5\n"
     try:
-        with open(MOONRAKER_CONF_PATH, "a") as f:
-            f.write(spoolman_block)
-        print(f"  {C.GREEN}✓{C.RESET} Added [spoolman] to {MOONRAKER_CONF_PATH}")
+        backup_file(conf_path)
+        with open(conf_path, "a") as f:
+            f.write("\n" + _spoolman_block(spoolman_url))
+        print(f"  {C.GREEN}✓{C.RESET} Added [spoolman] to {conf_path}")
         print(f"\n  {C.YELLOW}Important:{C.RESET} Restart Moonraker for this change to take effect:")
         print(f"    sudo systemctl restart moonraker\n")
         return "added"
     except PermissionError:
-        print(f"  {C.RED}✗{C.RESET} Permission denied writing to {MOONRAKER_CONF_PATH}")
+        print(f"  {C.RED}✗{C.RESET} Permission denied writing to {conf_path}")
         print(f"    Add this manually:")
-        print(f"    [spoolman]")
-        print(f"    server: {spoolman_url}")
-        print(f"    sync_rate: 5")
+        print("    " + _spoolman_block(spoolman_url).replace("\n", "\n    ").rstrip())
         return "failed"
     except Exception as e:
         print(f"  {C.RED}✗{C.RESET} Failed to write moonraker.conf: {e}")

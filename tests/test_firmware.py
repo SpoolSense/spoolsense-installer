@@ -15,6 +15,7 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from spoolsense_installer import firmware
+from spoolsense_installer.errors import InstallerError
 
 
 def completed(returncode=0, stdout="", stderr=""):
@@ -57,27 +58,27 @@ class VerifyFlashTest(unittest.TestCase):
 
     def test_exits_when_esptool_fails(self):
         """Non-zero esptool exit must abort, even if output happens to parse."""
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(InstallerError):
             self._verify(completed(returncode=2, stdout=GOOD_ESP32_OUTPUT))
 
     def test_exits_when_chip_not_detected(self):
         """Unparseable output must abort — never proceed unverified."""
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(InstallerError):
             self._verify(completed(stdout="something unexpected\n"))
 
     def test_exits_when_flash_size_not_detected(self):
         out = "Chip is ESP32-D0WD-V3 (revision v3.1)\nno size here\n"
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(InstallerError):
             self._verify(completed(stdout=out))
 
     def test_exits_on_chip_mismatch(self):
         out = "Chip is ESP32-S3 (QFN56)\nDetected flash size: 4MB\n"
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(InstallerError):
             self._verify(completed(stdout=out), board_key="esp32dev")
 
     def test_exits_when_flash_too_small(self):
         out = "Chip is ESP32-S3 (QFN56)\nDetected flash size: 4MB\n"
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(InstallerError):
             self._verify(completed(stdout=out), board_key="esp32s3devkitc")
 
     def test_exits_cleanly_on_timeout(self):
@@ -86,8 +87,124 @@ class VerifyFlashTest(unittest.TestCase):
             firmware.subprocess, "run",
             side_effect=subprocess.TimeoutExpired(cmd="esptool", timeout=15),
         ):
-            with self.assertRaises(SystemExit):
+            with self.assertRaises(InstallerError):
                 firmware.verify_flash("/dev/ttyUSB0", "esp32dev")
+
+
+def make_release_with_checksums(payload, digest):
+    return {
+        "tag_name": "v1.7.6",
+        "assets": [
+            {"name": "spoolsense_scanner_esp32dev.bin",
+             "browser_download_url": "http://x/fw.bin", "size": len(payload)},
+            {"name": "spoolsense_scanner_esp32dev.bin.sha256",
+             "browser_download_url": "http://x/fw.bin.sha256", "size": 71},
+        ],
+    }
+
+
+class DownloadChecksumTest(unittest.TestCase):
+    """Release assets are verified against their .sha256 sidecar when present."""
+
+    PAYLOAD = b"\xe9firmware-bytes"
+
+    def _download(self, sha_body):
+        import io
+
+        def fake_urlopen(url, timeout=None):
+            body = self.PAYLOAD if url.endswith("fw.bin") else sha_body
+
+            class R(io.BytesIO):
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *a):
+                    return False
+
+            return R(body)
+
+        release = make_release_with_checksums(self.PAYLOAD, sha_body)
+        with mock.patch.object(firmware.urllib.request, "urlopen", fake_urlopen):
+            return firmware.download_asset(release, suffix="esp32dev")
+
+    def test_valid_checksum_accepted(self):
+        import hashlib
+        good = hashlib.sha256(self.PAYLOAD).hexdigest().encode() + b"  fw.bin\n"
+        self.assertEqual(self._download(good), self.PAYLOAD)
+
+    def test_corrupted_download_rejected(self):
+        bad = b"0" * 64 + b"  fw.bin\n"
+        with self.assertRaises(InstallerError):
+            self._download(bad)
+
+    def test_release_without_checksums_still_works(self):
+        """Scanner releases don't publish .sha256 yet — absence is not fatal."""
+        import io
+
+        release = {"tag_name": "v1.7.6", "assets": [
+            {"name": "spoolsense_scanner_esp32dev.bin",
+             "browser_download_url": "http://x/fw.bin", "size": len(self.PAYLOAD)},
+        ]}
+
+        def fake_urlopen(url, timeout=None):
+            class R(io.BytesIO):
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *a):
+                    return False
+
+            return R(self.PAYLOAD)
+
+        with mock.patch.object(firmware.urllib.request, "urlopen", fake_urlopen):
+            self.assertEqual(firmware.download_asset(release, suffix="esp32dev"),
+                             self.PAYLOAD)
+
+
+class FetchReleaseTest(unittest.TestCase):
+    def test_version_pin_requests_tag_endpoint(self):
+        """--firmware-version must fetch that exact tag, not releases/latest."""
+        import io
+        import json as jsonlib
+        seen = {}
+
+        def fake_urlopen(req, timeout=None):
+            seen["url"] = req.full_url
+
+            class R(io.BytesIO):
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *a):
+                    return False
+
+            return R(jsonlib.dumps({"tag_name": "v1.7.4", "assets": []}).encode())
+
+        with mock.patch.object(firmware.urllib.request, "urlopen", fake_urlopen):
+            release = firmware.fetch_release(version="1.7.4")
+        self.assertIn("/releases/tags/v1.7.4", seen["url"])
+        self.assertEqual(release["tag_name"], "v1.7.4")
+
+    def test_default_requests_latest(self):
+        import io
+        import json as jsonlib
+        seen = {}
+
+        def fake_urlopen(req, timeout=None):
+            seen["url"] = req.full_url
+
+            class R(io.BytesIO):
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *a):
+                    return False
+
+            return R(jsonlib.dumps({"tag_name": "v1.7.6", "assets": []}).encode())
+
+        with mock.patch.object(firmware.urllib.request, "urlopen", fake_urlopen):
+            firmware.fetch_release()
+        self.assertIn("/releases/latest", seen["url"])
 
 
 class FlashFirmwareTest(unittest.TestCase):
@@ -105,7 +222,7 @@ class FlashFirmwareTest(unittest.TestCase):
                 firmware.subprocess, "run",
                 side_effect=subprocess.TimeoutExpired(cmd="esptool", timeout=120),
             ):
-                with self.assertRaises(SystemExit):
+                with self.assertRaises(InstallerError):
                     firmware.flash_firmware("/dev/ttyUSB0", "esp32dev", b"\x00" * 16,
                                             paths[0], paths[1], paths[2])
 

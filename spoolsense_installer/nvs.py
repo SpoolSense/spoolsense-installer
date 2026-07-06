@@ -8,6 +8,7 @@ import sys
 from typing import Dict, Union
 
 from .constants import SCRIPT_DIR
+from .errors import InstallerError
 
 
 def generate_nvs_csv(config: Dict[str, Union[str, int]]) -> str:
@@ -37,6 +38,16 @@ def generate_nvs_csv(config: Dict[str, Union[str, int]]) -> str:
         ("nfc_reader", "data", "string", config["nfc_reader"]),
         ("hostname", "data", "string", config["hostname"]),
         ("moonraker_url", "data", "string", config["moonraker_url"]),
+        # Firmware v1.7.x keys (ConfigurationManager.cpp): putBool→u8,
+        # putUShort→u16, putUChar→u8
+        ("wifi_awake", "data", "u8", config["wifi_awake"]),
+        ("low_spool_g", "data", "u16", config["low_spool_g"]),
+        ("bambu_dash", "data", "u8", config["bambu_dash"]),
+        ("prusalink_on", "data", "u8", config["prusalink_on"]),
+        ("prusalink_url", "data", "string", config["prusalink_url"]),
+        ("prusalink_key", "data", "string", config["prusalink_key"]),
+        ("u1_on", "data", "u8", config["u1_on"]),
+        ("u1_channel", "data", "u8", config["u1_channel"]),
     ]
     for row in rows:
         writer.writerow(row)
@@ -65,7 +76,7 @@ def generate_nvs_bin(csv_content: str, output_path: str, size: int = 0x5000) -> 
         print(f"    Tried: {' '.join(cmd)}")
         if hasattr(e, 'stderr') and e.stderr:
             print(f"    {e.stderr.strip()}")
-        sys.exit(1)
+        raise InstallerError
 
     os.remove(csv_path)
     return output_path

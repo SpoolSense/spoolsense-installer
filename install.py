@@ -12,7 +12,7 @@ the middleware (choose "Middleware only").
 Note: SpoolSense middleware must run on the printer host.
 """
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 
 import argparse
 import os
@@ -20,10 +20,11 @@ import sys
 import tempfile
 
 from spoolsense_installer.constants import C, BOARDS, MIDDLEWARE_DIR
+from spoolsense_installer.errors import InstallerError
 from spoolsense_installer.ui import ask_choice, ask, validate_url
 from spoolsense_installer.config import collect_scanner_config, collect_middleware_config, collect_middleware_mqtt_settings
 from spoolsense_installer.nvs import generate_nvs_csv, generate_nvs_bin
-from spoolsense_installer.firmware import fetch_latest_release, download_asset, detect_usb_port, verify_flash, flash_firmware
+from spoolsense_installer.firmware import fetch_release, download_asset, detect_usb_port, verify_flash, flash_firmware
 from spoolsense_installer.middleware import (generate_config as generate_middleware_config,
                                              install as install_middleware, copy_klipper_macros,
                                              setup_moonraker_update_manager)
@@ -33,12 +34,14 @@ from spoolsense_installer.spoolman import (setup_extra_fields, setup_moonraker_s
 
 # ── Install flow orchestration ───────────────────────────────────────────────
 
-def run_scanner_install(scanner_config: dict, setup_type: str = "") -> list:
+def run_scanner_install(scanner_config: dict, setup_type: str = "",
+                        firmware_version: str = "") -> list:
     """Download firmware, generate NVS, flash the ESP32.
 
     ``setup_type`` widens the Spoolman field set for mode-specific fields
-    (e.g. Happy Hare). Returns the list of Spoolman extra fields that could
-    NOT be created (empty if Spoolman setup was skipped or fully succeeded).
+    (e.g. Happy Hare); ``firmware_version`` pins a specific scanner release.
+    Returns the list of Spoolman extra fields that could NOT be created
+    (empty if Spoolman setup was skipped or fully succeeded).
     """
     board_key = scanner_config["board"]
     _, _, fw_suffix, _, _ = BOARDS[board_key]
@@ -46,7 +49,7 @@ def run_scanner_install(scanner_config: dict, setup_type: str = "") -> list:
     port = detect_usb_port()
     verify_flash(port, board_key)
 
-    release = fetch_latest_release()
+    release = fetch_release(version=firmware_version)
     firmware_bin = download_asset(release, suffix=fw_suffix)
     bootloader_bin = download_asset(release, name=f"bootloader_{fw_suffix}.bin")
     partitions_bin = download_asset(release, name=f"partitions_{fw_suffix}.bin")
@@ -164,6 +167,8 @@ def run_middleware_install(scanner_config: dict, middleware_config: dict, dev: b
     steps.append({
         "added": ("Moonraker update_manager entry", "warn", "restart Moonraker to apply"),
         "exists": ("Moonraker update_manager entry", "ok", "already configured"),
+        "upgraded": ("Moonraker update_manager entry", "warn",
+                     "upgraded for venv — restart Moonraker"),
         "declined": ("Moonraker update_manager entry", "skip", "declined"),
         "missing-conf": ("Moonraker update_manager entry", "warn",
                          "moonraker.conf not found — add manually"),
@@ -260,10 +265,33 @@ def parse_args(argv=None) -> argparse.Namespace:
         action="store_true",
         help="Track the middleware branch head instead of pinning to the latest release.",
     )
+    parser.add_argument(
+        "--firmware-version",
+        default="",
+        metavar="X.Y.Z",
+        help="Flash a specific scanner firmware release instead of the latest.",
+    )
     return parser.parse_args(argv)
 
 
 def main() -> None:
+    """CLI entry point: run the install, translating failures to exit codes.
+
+    Library modules raise InstallerError (after printing their guidance)
+    instead of exiting — this is the only place that turns one into exit(1).
+    """
+    try:
+        _main()
+    except KeyboardInterrupt:
+        print("\n\nInstallation cancelled.")
+        sys.exit(1)
+    except InstallerError as e:
+        if str(e):
+            print(f"\n  {C.RED}✗ {e}{C.RESET}")
+        sys.exit(1)
+
+
+def _main() -> None:
     args = parse_args()
 
     if args.setup_fields:
@@ -308,7 +336,8 @@ def main() -> None:
     if mode in ("both", "middleware"):
         if scanner_config is None:
             scanner_config = collect_middleware_mqtt_settings()
-        middleware_config = collect_middleware_config()
+        middleware_config = collect_middleware_config(
+            low_spool_default=scanner_config.get("low_spool_g", 100))
 
     setup_type = (middleware_config or {}).get("setup_type", "")
 
@@ -326,7 +355,8 @@ def main() -> None:
     failed_fields = []
     steps = []
     if mode in ("both", "scanner"):
-        failed_fields = run_scanner_install(scanner_config, setup_type)
+        failed_fields = run_scanner_install(scanner_config, setup_type,
+                                            firmware_version=args.firmware_version)
         steps.append(("Scanner firmware flashed", "ok",
                       BOARDS[scanner_config["board"]][0]))
         if scanner_config.get("spoolman_on") and scanner_config.get("spoolman_url"):
@@ -377,8 +407,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("\n\nInstallation cancelled.")
-        sys.exit(1)
+    main()

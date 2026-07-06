@@ -51,6 +51,12 @@ python3 install.py --dev
 
 Tracks the middleware branch head instead of pinning to the latest release tag.
 
+```bash
+python3 install.py --firmware-version 1.7.6
+```
+
+Flashes a specific scanner firmware release instead of the latest.
+
 
 ## Recommended Setup
 
@@ -85,8 +91,8 @@ The installer verifies the connected chip type and flash size before flashing to
 - Config is stored separately from firmware — update settings without reflashing
 
 ### Middleware (Raspberry Pi)
-- SpoolSense Python middleware (cloned to `~/SpoolSense`)
-- Python dependencies
+- SpoolSense Python middleware (cloned to `~/SpoolSense`, pinned to the latest release)
+- Python dependencies in a dedicated virtualenv (`~/SpoolSense/.venv`)
 - Generated `config.yaml` with your settings
 - Optional slicer integration (`publish_lane_data`) — publishes spool data for Orca Slicer. AFC and Happy Hare users don't need this.
 - systemd service (`spoolsense.service`) — starts on boot

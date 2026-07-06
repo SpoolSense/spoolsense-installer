@@ -40,11 +40,42 @@ class UpdateManagerTest(unittest.TestCase):
         self.assertIn("primary_branch: master", content)
         self.assertIn("managed_services: spoolsense", content)
         self.assertIn("origin: https://github.com/SpoolSense/spoolsense_middleware.git", content)
+        # Venv options let Moonraker update python deps alongside the repo
+        self.assertIn("virtualenv:", content)
+        self.assertIn("requirements: middleware/requirements.txt", content)
 
-    def test_existing_section_left_untouched(self):
-        original = "[update_manager spoolsense]\ntype: git_repo\n# user tweaked\n"
+    def test_venv_aware_section_left_untouched(self):
+        original = ("[update_manager spoolsense]\ntype: git_repo\n"
+                    "virtualenv: /home/pi/SpoolSense/.venv\n# user tweaked\n")
         status, content = self._run(original)
         self.assertEqual(status, "exists")
+        self.assertEqual(content, original)
+
+    def test_pre_venv_section_upgraded_in_place(self):
+        """v1.3.0 wrote the block without virtualenv/requirements — without
+        migration, Moonraker updates stop updating python deps once the
+        middleware runs from a venv."""
+        original = ("[server]\nhost: 0.0.0.0\n\n"
+                    "[update_manager spoolsense]\n"
+                    "type: git_repo\n"
+                    "channel: stable\n"
+                    "path: /home/pi/SpoolSense\n"
+                    "primary_branch: master\n"
+                    "managed_services: spoolsense\n\n"
+                    "[power printer]\ntype: gpio\n")
+        status, content = self._run(original)
+        self.assertEqual(status, "upgraded")
+        self.assertIn("virtualenv:", content)
+        self.assertIn("requirements: middleware/requirements.txt", content)
+        # Only ONE spoolsense section, and neighbors untouched
+        self.assertEqual(content.count("[update_manager spoolsense]"), 1)
+        self.assertIn("[server]\nhost: 0.0.0.0", content)
+        self.assertIn("[power printer]\ntype: gpio", content)
+
+    def test_pre_venv_upgrade_declined_leaves_file_alone(self):
+        original = "[update_manager spoolsense]\ntype: git_repo\n"
+        status, content = self._run(original, answer=False)
+        self.assertEqual(status, "declined")
         self.assertEqual(content, original)
 
     def test_declined_makes_no_change(self):
