@@ -16,6 +16,7 @@ __version__ = "1.4.0"
 
 import argparse
 import os
+import shutil
 import sys
 import tempfile
 
@@ -56,26 +57,24 @@ def run_scanner_install(scanner_config: dict, setup_type: str = "",
     bootloader_bin = download_asset(release, name=f"bootloader_{fw_suffix}.bin")
     partitions_bin = download_asset(release, name=f"partitions_{fw_suffix}.bin")
 
-    nvs_csv = generate_nvs_csv(scanner_config)
-    nvs_path = os.path.join(tempfile.gettempdir(), "spoolsense_nvs.bin")
-    generate_nvs_bin(nvs_csv, nvs_path)
-
-    # Write temp files for bootloader/partitions (flash_firmware needs file paths)
-    temp_paths = []
-    boot_path = os.path.join(tempfile.gettempdir(), f"bootloader_{fw_suffix}.bin")
-    part_path = os.path.join(tempfile.gettempdir(), f"partitions_{fw_suffix}.bin")
-    with open(boot_path, "wb") as f:
-        f.write(bootloader_bin)
-    with open(part_path, "wb") as f:
-        f.write(partitions_bin)
-    temp_paths.extend([boot_path, part_path, nvs_path])
-
+    # Private working dir: no collisions between concurrent runs, no stale
+    # sensitive config in the shared temp dir after a crash
+    workdir = tempfile.mkdtemp(prefix="spoolsense-install-")
     try:
+        nvs_csv = generate_nvs_csv(scanner_config)
+        nvs_path = os.path.join(workdir, "spoolsense_nvs.bin")
+        generate_nvs_bin(nvs_csv, nvs_path)
+
+        boot_path = os.path.join(workdir, f"bootloader_{fw_suffix}.bin")
+        part_path = os.path.join(workdir, f"partitions_{fw_suffix}.bin")
+        with open(boot_path, "wb") as f:
+            f.write(bootloader_bin)
+        with open(part_path, "wb") as f:
+            f.write(partitions_bin)
+
         flash_firmware(port, board_key, firmware_bin, nvs_path, part_path, boot_path)
     finally:
-        for p in temp_paths:
-            if os.path.exists(p):
-                os.unlink(p)
+        shutil.rmtree(workdir, ignore_errors=True)
 
     # Setup Spoolman extra fields if enabled
     spoolman_url = scanner_config.get("spoolman_url") or ""

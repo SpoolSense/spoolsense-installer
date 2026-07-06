@@ -73,6 +73,11 @@ class ValidateUrlTest(unittest.TestCase):
                     "http://host:notaport"):
             self.assertIsNotNone(validate_url(url), url)
 
+    def test_accepts_ipv6_urls(self):
+        """The hand-rolled parser choked on bracketed IPv6 hosts."""
+        for url in ("http://[::1]:7912", "http://[fe80::1]"):
+            self.assertIsNone(validate_url(url), url)
+
 
 class SimpleValidatorsTest(unittest.TestCase):
     def test_not_empty(self):
