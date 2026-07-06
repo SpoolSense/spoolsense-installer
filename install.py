@@ -22,6 +22,7 @@ import tempfile
 from spoolsense_installer.constants import C, BOARDS, MIDDLEWARE_DIR
 from spoolsense_installer.errors import InstallerError
 from spoolsense_installer.preflight import preflight_checks, run_preflight
+from spoolsense_installer.discovery import prompt_device_ids
 from spoolsense_installer.ui import ask_choice, ask, validate_url
 from spoolsense_installer.config import collect_scanner_config, collect_middleware_config, collect_middleware_mqtt_settings
 from spoolsense_installer.nvs import generate_nvs_csv, generate_nvs_bin
@@ -109,6 +110,10 @@ def run_middleware_install(scanner_config: dict, middleware_config: dict, dev: b
 
     Returns summary steps: a list of (label, status, detail) tuples.
     """
+    # Resolve real device IDs from retained MQTT topics before writing config —
+    # most installs never need to touch YOUR_DEVICE_ID by hand anymore
+    prompt_device_ids(middleware_config.get("scanners", []), scanner_config, ask)
+
     config_yaml = generate_middleware_config(scanner_config, middleware_config)
     result = install_middleware(config_yaml, dev=dev)
 
@@ -118,8 +123,9 @@ def run_middleware_install(scanner_config: dict, middleware_config: dict, dev: b
     config_path = os.path.join(MIDDLEWARE_DIR, "config.yaml")
     if result["config"] == "written":
         steps.append(("config.yaml written", "ok", config_path))
-        steps.append(("Replace YOUR_DEVICE_ID in config.yaml", "warn",
-                      "device ID shown at http://spoolsense.local"))
+        if "YOUR_DEVICE_ID" in config_yaml:
+            steps.append(("Replace YOUR_DEVICE_ID in config.yaml", "warn",
+                          "device ID shown at http://spoolsense.local"))
     else:
         steps.append(("config.yaml kept (existing file untouched)", "skip", config_path))
 
