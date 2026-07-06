@@ -112,20 +112,33 @@ class CopyKlipperMacrosTest(unittest.TestCase):
 
 
 class GenerateConfigTest(unittest.TestCase):
-    def test_topic_prefix_matches_compiled_firmware(self):
+    def _generate(self, scanner_overrides=None, middleware_overrides=None):
+        import yaml
         scanner_config = {
             "mqtt_host": "broker", "mqtt_port": 1883,
             "mqtt_user": "", "mqtt_pass": "", "spoolman_url": "",
         }
+        scanner_config.update(scanner_overrides or {})
         middleware_config = {
             "setup_type": "single",
             "scanners": [{"action": "toolhead", "toolhead": "T0"}],
             "moonraker_url": "http://localhost:7125",
             "publish_lane_data": False,
         }
-        yaml_text = generate_config(scanner_config, middleware_config)
-        self.assertIn('scanner_topic_prefix: "spoolsense"', yaml_text)
-        self.assertIn('action: "toolhead"', yaml_text)
+        middleware_config.update(middleware_overrides or {})
+        return yaml.safe_load(generate_config(scanner_config, middleware_config))
+
+    def test_topic_prefix_matches_compiled_firmware(self):
+        parsed = self._generate()
+        self.assertEqual(parsed["scanner_topic_prefix"], "spoolsense")
+        self.assertEqual(parsed["scanners"]["YOUR_DEVICE_ID"]["action"], "toolhead")
+
+    def test_special_characters_survive_into_valid_yaml(self):
+        """Passwords legitimately contain quotes/backslashes — f-string YAML
+        generation corrupted the whole config; a real serializer must not."""
+        nasty = 'p@ss"wor\\d: with # everything'
+        parsed = self._generate(scanner_overrides={"mqtt_pass": nasty})
+        self.assertEqual(parsed["mqtt"]["password"], nasty)
 
 
 if __name__ == "__main__":

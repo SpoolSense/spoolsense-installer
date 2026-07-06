@@ -63,7 +63,7 @@ if [ ! -x "$VENV_DIR/bin/python" ]; then
     fi
 fi
 echo "Installing dependencies..."
-"$VENV_DIR/bin/pip" install --quiet --upgrade esptool esp-idf-nvs-partition-gen
+"$VENV_DIR/bin/pip" install --quiet --upgrade esptool esp-idf-nvs-partition-gen pyyaml
 
 # Run the installer with the venv python so esptool/nvs-gen module
 # fallbacks (python -m ...) resolve inside the venv
