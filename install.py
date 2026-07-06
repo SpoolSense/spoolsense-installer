@@ -21,6 +21,7 @@ import tempfile
 
 from spoolsense_installer.constants import C, BOARDS, MIDDLEWARE_DIR
 from spoolsense_installer.errors import InstallerError
+from spoolsense_installer.preflight import preflight_checks, run_preflight
 from spoolsense_installer.ui import ask_choice, ask, validate_url
 from spoolsense_installer.config import collect_scanner_config, collect_middleware_config, collect_middleware_mqtt_settings
 from spoolsense_installer.nvs import generate_nvs_csv, generate_nvs_bin
@@ -323,9 +324,12 @@ def _main() -> None:
     mode = ask_choice("What do you want to install?", {
         "both": "Scanner + Middleware (recommended)",
         "scanner": "Scanner only",
-        "middleware": "Middleware only",
+        "middleware": "Middleware only (also after using the Web Flasher)",
         "config": f"{C.RED}Config only (source builds){C.RESET} — write NVS config for OTA compatibility",
     })
+
+    # Verify the host can finish this install BEFORE asking 20 questions
+    run_preflight(preflight_checks(mode))
 
     scanner_config = None
     middleware_config = None
