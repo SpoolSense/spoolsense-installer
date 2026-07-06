@@ -11,7 +11,11 @@ from types import SimpleNamespace
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from spoolsense_installer.discovery import extract_device_id, assign_device_ids
+from unittest import mock
+
+from spoolsense_installer import discovery
+from spoolsense_installer.discovery import (assign_device_ids, extract_device_id,
+                                            prompt_device_ids)
 
 
 class ExtractDeviceIdTest(unittest.TestCase):
@@ -43,6 +47,37 @@ class AssignDeviceIdsTest(unittest.TestCase):
         scanners = [{"action": "happy_hare_stage"}]
         self.assertEqual(assign_device_ids(scanners, ["ccc333"]),
                          [("happy_hare_stage", "ccc333")])
+
+
+class PromptDeviceIdsTest(unittest.TestCase):
+    SCANNER_CONFIG = {"mqtt_host": "b", "mqtt_port": 1883,
+                      "mqtt_user": "", "mqtt_pass": ""}
+
+    def _prompt(self, discovered, answers):
+        scanners = [{"action": "toolhead", "toolhead": "T0"}]
+        answer_iter = iter(answers)
+
+        def fake_ask(prompt, default=None, **kwargs):
+            value = next(answer_iter)
+            return str(default or "") if value == "" else value
+
+        with mock.patch.object(discovery, "discover_device_ids",
+                               return_value=discovered):
+            prompt_device_ids(scanners, self.SCANNER_CONFIG, fake_ask)
+        return scanners[0]
+
+    def test_enter_accepts_proposal(self):
+        scanner = self._prompt(["f3d360"], [""])
+        self.assertEqual(scanner["device_id"], "f3d360")
+
+    def test_dash_skips_proposal(self):
+        """A stale retained topic must be refusable — '-' keeps the placeholder."""
+        scanner = self._prompt(["stale99"], ["-"])
+        self.assertNotIn("device_id", scanner)
+
+    def test_blank_with_no_proposal_keeps_placeholder(self):
+        scanner = self._prompt([], [""])
+        self.assertNotIn("device_id", scanner)
 
 
 if __name__ == "__main__":

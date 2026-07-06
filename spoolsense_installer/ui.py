@@ -141,7 +141,11 @@ def validate_url(value: str) -> Optional[str]:
     """Validate an HTTP/HTTPS URL with host validation (urllib.parse-based)."""
     if not value:
         return "Cannot be empty"
-    parsed = urllib.parse.urlsplit(value)
+    try:
+        parsed = urllib.parse.urlsplit(value)
+    except ValueError:
+        # e.g. unbalanced IPv6 brackets — a typo must re-prompt, not traceback
+        return "Not a valid URL"
     if parsed.scheme not in ("http", "https"):
         return "Must start with http:// or https://"
     try:

@@ -93,7 +93,13 @@ def prompt_device_ids(scanners: List[dict], scanner_config: dict, ask) -> None:
         print(f"  or fill in YOUR_DEVICE_ID in config.yaml later.{C.RESET}")
 
     for scanner, (label, proposal) in zip(scanners, assign_device_ids(scanners, discovered)):
-        value = ask(f"Device ID for {label} (blank = fill in later)",
-                    default=proposal or "")
-        if value.strip():
-            scanner["device_id"] = value.strip()
+        # With a proposal, Enter accepts it and '-' skips (retained topics can
+        # be stale); without one, Enter keeps the placeholder.
+        if proposal:
+            value = ask(f"Device ID for {label} ('-' = fill in later)",
+                        default=proposal)
+        else:
+            value = ask(f"Device ID for {label} (blank = fill in later)", default="")
+        value = value.strip()
+        if value and value != "-":
+            scanner["device_id"] = value
