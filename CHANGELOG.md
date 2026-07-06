@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.4.0] - Unreleased
+## [1.4.0] - 2026-07-06
 
 ### Added
 - **Preflight checks** — mode-aware host verification (esptool/NVS generator/GitHub/serial-group for scanner installs; git/venv-capability/systemd/writable paths for middleware) runs right after mode selection, aborting with the exact fix command before the user answers any questions.
