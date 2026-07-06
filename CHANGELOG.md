@@ -3,11 +3,19 @@
 ## [1.4.0] - Unreleased
 
 ### Added
+- **Preflight checks** — mode-aware host verification (esptool/NVS generator/GitHub/serial-group for scanner installs; git/venv-capability/systemd/writable paths for middleware) runs right after mode selection, aborting with the exact fix command before the user answers any questions.
+- **MQTT device-ID discovery** — the installer listens ~5s for the scanner's retained `spoolsense/<id>/availability`/`tag/state` topics and proposes real device IDs per scanner (labeled by lane/toolhead); `YOUR_DEVICE_ID` placeholders only remain when nothing is found or the user skips. Best-effort — broker problems degrade to the old flow.
+- `RELEASING.md` release checklist; stale-bot window lengthened with `accepted`/`tracking` label exemptions (five accepted issues were previously stale-closed unimplemented).
 - **All firmware v1.7.x NVS keys are now provisionable** — WiFi keep-awake, low-spool grams, Bambu dashboard, PrusaLink (URL + API key), and Snapmaker U1 (channel 0-3), gated behind feature questions so the default flow barely grows. Previously these were only settable via the scanner's AP-mode web UI.
 - **`--firmware-version X.Y.Z`** — flash a specific scanner release instead of always trusting `releases/latest`; installs become reproducible.
 - **SHA256 verification of firmware downloads** — assets are checked against their `.sha256` sidecar when the release publishes one, failing closed on mismatch. (Scanner releases don't ship sidecars yet; verification activates automatically when they do.)
 - **pip-installable** — `pyproject.toml` with a `spoolsense-install` console entry point and pinned-minimum deps.
 - **Config backups** — `config.yaml` and `moonraker.conf` get a `.bak` copy before the installer modifies them.
+
+### Fixed
+- **config.yaml generated with `yaml.safe_dump`** — passwords containing quotes/backslashes/`#` no longer corrupt the generated config (prompt validators remain as defense in depth).
+- URL validation rewritten on `urllib.parse` — bracketed IPv6 hosts accepted, malformed ports rejected consistently.
+- The multi-device port-selection prompt aborts cleanly on non-interactive stdin instead of looping forever; scanner install artifacts (including the credentials-bearing NVS binary) now use a private temp dir removed on exit.
 
 ### Changed
 - **Virtualenv everywhere (#21)** — middleware deps install into `~/SpoolSense/.venv` (systemd unit runs the venv python), the installer bootstraps its own venv, and `--break-system-packages` is gone. The `[update_manager spoolsense]` entry now includes `virtualenv`/`requirements` so Moonraker updates deps alongside the repo.
