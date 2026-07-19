@@ -18,6 +18,28 @@ from .errors import InstallerError
 from .files import backup_file
 
 
+def _gate_count(value):
+    """Validated MMU gate count: None if absent, else an int in 1-32.
+
+    Anything else raises InstallerError — never emit a config the middleware
+    rejects, and never let int() tracebacks escape the CLI's error handling.
+    bool is an int subclass and floats truncate silently, so both are
+    rejected explicitly; strings must be plain decimal digits (isdecimal is
+    exactly the set int() accepts — isdigit is not: int('²') raises).
+    """
+    if value is None or value == "" or (not isinstance(value, bool) and value == 0):
+        return None
+    gates = None
+    if isinstance(value, int) and not isinstance(value, bool):
+        gates = value
+    elif isinstance(value, str) and value.isdecimal():
+        gates = int(value)
+    if gates is None or not 1 <= gates <= 32:
+        print(f"  {C.RED}✗{C.RESET} Invalid MMU gate count {value!r} — must be 1-32")
+        raise InstallerError
+    return gates
+
+
 def generate_config(scanner_config: dict, middleware_config: dict) -> str:
     """Generate middleware config.yaml from collected settings.
 
@@ -62,10 +84,12 @@ def generate_config(scanner_config: dict, middleware_config: dict) -> str:
     # HH's own MMU_SPOOLMAN SPOOLID/GATE command. printer_name is legacy —
     # tolerated but ignored, HH stamps its own printer identity — so it is
     # never written. num_gates is only needed for the mobile flow.
+    gates = _gate_count(middleware_config.get("num_gates")) \
+        if setup_type == "happy_hare" else None
     if setup_type == "happy_hare":
         cfg["happy_hare"] = {"enabled": True}
-        if middleware_config.get("num_gates"):
-            cfg["happy_hare"]["num_gates"] = int(middleware_config["num_gates"])
+        if gates:
+            cfg["happy_hare"]["num_gates"] = gates
 
     cfg["scanners"] = scanners_map
 
@@ -85,8 +109,7 @@ def generate_config(scanner_config: dict, middleware_config: dict) -> str:
             # v1.8.6+: phone scans assign a tag to any gate; requires
             # happy_hare.num_gates and spoolman_url in this config. Fail
             # fast — the middleware rejects this action without a gate count.
-            gates = int(middleware_config.get("num_gates") or 0)
-            if not 1 <= gates <= 32:
+            if not gates:
                 print(f"  {C.RED}✗{C.RESET} Happy Hare mobile requires an MMU gate count (1-32)")
                 raise InstallerError
             mobile = {"enabled": True, "action": "happy_hare_stage"}

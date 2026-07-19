@@ -91,6 +91,23 @@ class HappyHareMobileTest(unittest.TestCase):
         parsed = self._parsed(toolheads=["G0", "G1"])
         self.assertNotIn("toolheads", parsed)
 
+    def test_malformed_gate_counts_raise_installer_error_not_valueerror(self):
+        """int('garbage') must not traceback out of the generator — the CLI
+        only catches InstallerError. Floats truncate silently and bool is an
+        int subclass, so both are rejected rather than coerced."""
+        from spoolsense_installer.errors import InstallerError
+        for bad in ("garbage", "4.5", 4.9, True, [], "²"):
+            with self.assertRaises(InstallerError, msg=repr(bad)):
+                generate_config(scanner_cfg(), hh_cfg(mobile_enabled=True, num_gates=bad))
+            # Invalid values fail even without mobile — never silently dropped
+            with self.assertRaises(InstallerError, msg=repr(bad)):
+                generate_config(scanner_cfg(), hh_cfg(num_gates=bad))
+
+    def test_decimal_string_gate_count_accepted(self):
+        parsed = yaml.safe_load(generate_config(
+            scanner_cfg(), hh_cfg(mobile_enabled=True, num_gates="8")))
+        self.assertEqual(parsed["happy_hare"]["num_gates"], 8)
+
     def test_hh_mobile_without_gate_count_refused(self):
         """num_gates is middleware-mandatory for the happy_hare_stage mobile
         action — the generator must fail fast rather than emit a config the

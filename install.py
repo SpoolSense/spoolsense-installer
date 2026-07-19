@@ -356,13 +356,14 @@ def _main() -> None:
 
     setup_type = (middleware_config or {}).get("setup_type", "")
 
-    # Happy Hare binding writes spool extras — Spoolman is mandatory there.
-    # Check the enabled flag too: the middleware-only settings collector fills
-    # spoolman_url even when Spoolman was declined.
+    # Happy Hare requires Spoolman: spools are identified by their Spoolman ID
+    # when binding gates via HH's MMU_SPOOLMAN command. Check the enabled flag
+    # too: the middleware-only settings collector fills spoolman_url even when
+    # Spoolman was declined.
     if setup_type == "happy_hare" and not (scanner_config.get("spoolman_on")
                                            and scanner_config.get("spoolman_url")):
-        print(f"\n  {C.YELLOW}Happy Hare requires Spoolman{C.RESET} — the middleware binds spools")
-        print("  to MMU gates by writing Spoolman extra fields.\n")
+        print(f"\n  {C.YELLOW}Happy Hare requires Spoolman{C.RESET} — spools are identified by their")
+        print("  Spoolman ID when binding gates via MMU_SPOOLMAN.\n")
         scanner_config["spoolman_url"] = ask("Spoolman URL", default="http://spoolman.local:7912",
                                              validate=validate_url)
         scanner_config["spoolman_on"] = 1

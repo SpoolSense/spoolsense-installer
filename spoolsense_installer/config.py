@@ -100,13 +100,13 @@ def collect_scanner_config() -> Dict[str, Union[str, int]]:
     if ask_yesno("Snapmaker U1 printer (direct mode)?", default=False):
         u1_on = 1
         u1_channel = int(ask("U1 material channel (0-3)", default=0,
-                             validate=lambda v: None if v.isdigit() and int(v) <= 3
+                             validate=lambda v: None if v.isdecimal() and int(v) <= 3
                              else "Must be 0-3"))
 
     print(f"\n{C.CYAN}── Behavior ───────────────────────────{C.RESET}\n")
 
     def validate_grams(value: str) -> Optional[str]:
-        return None if value.isdigit() else "Must be a non-negative number"
+        return None if value.isdecimal() else "Must be a non-negative number"
 
     low_spool_g = int(ask("Low-spool alert threshold (grams)", default=100,
                           validate=validate_grams))
@@ -219,7 +219,7 @@ def collect_middleware_config(low_spool_default: int = 100) -> Dict[str, Union[s
     moonraker_url = ask("Moonraker URL", default="http://localhost:7125", validate=validate_url)
 
     def validate_grams(value: str) -> Optional[str]:
-        return None if value.isdigit() else "Must be a non-negative number"
+        return None if value.isdecimal() else "Must be a non-negative number"
 
     low_spool_threshold = int(ask("Low-spool alert threshold (grams)",
                                   default=low_spool_default, validate=validate_grams))
@@ -238,7 +238,7 @@ def collect_middleware_config(low_spool_default: int = 100) -> Dict[str, Union[s
     num_gates = 0
     if setup_type == "happy_hare" and mobile_enabled:
         def validate_gates(value: str) -> Optional[str]:
-            return None if value.isdigit() and 1 <= int(value) <= 32 else "Must be 1-32"
+            return None if value.isdecimal() and 1 <= int(value) <= 32 else "Must be 1-32"
 
         num_gates = int(ask("Number of MMU gates", default=4, validate=validate_gates))
 
