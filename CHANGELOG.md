@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.5.0] - Unreleased
+## [1.5.0] - 2026-07-18
 
 Happy Hare setups now target middleware v1.8.6+ (fresh installs get it automatically via the latest-release pin; the installer supports no older-version pinning for middleware, so this is a hard floor for HH setups).
 
