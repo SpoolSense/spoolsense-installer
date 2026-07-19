@@ -83,7 +83,12 @@ def generate_config(scanner_config: dict, middleware_config: dict) -> str:
             mobile = {"enabled": True, "action": "toolhead_stage"}
         elif setup_type == "happy_hare":
             # v1.8.6+: phone scans assign a tag to any gate; requires
-            # happy_hare.num_gates and spoolman_url in this config
+            # happy_hare.num_gates and spoolman_url in this config. Fail
+            # fast — the middleware rejects this action without a gate count.
+            gates = int(middleware_config.get("num_gates") or 0)
+            if not 1 <= gates <= 32:
+                print(f"  {C.RED}✗{C.RESET} Happy Hare mobile requires an MMU gate count (1-32)")
+                raise InstallerError
             mobile = {"enabled": True, "action": "happy_hare_stage"}
         else:
             mobile = {"enabled": True, "action": "toolhead",

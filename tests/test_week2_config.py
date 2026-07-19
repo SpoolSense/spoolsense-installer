@@ -91,6 +91,19 @@ class HappyHareMobileTest(unittest.TestCase):
         parsed = self._parsed(toolheads=["G0", "G1"])
         self.assertNotIn("toolheads", parsed)
 
+    def test_hh_mobile_without_gate_count_refused(self):
+        """num_gates is middleware-mandatory for the happy_hare_stage mobile
+        action — the generator must fail fast rather than emit a config the
+        middleware rejects at startup. (num_gates WITHOUT mobile stays legal:
+        it's only mandatory for the mobile action.)"""
+        from spoolsense_installer.errors import InstallerError
+        for bad_gates in (None, 0, 33):
+            cfg = hh_cfg(mobile_enabled=True)
+            if bad_gates is not None:
+                cfg["num_gates"] = bad_gates
+            with self.assertRaises(InstallerError, msg=repr(bad_gates)):
+                generate_config(scanner_cfg(), cfg)
+
 
 class ScannerFieldsV2Test(unittest.TestCase):
     def test_matches_firmware_required_fields_v2(self):
