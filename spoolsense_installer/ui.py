@@ -85,7 +85,8 @@ def is_valid_ipv4(value: str) -> bool:
     if len(parts) != 4:
         return False
     for part in parts:
-        if not part or not part.isdigit():
+        # isdecimal, not isdigit: int() rejects digit-lookalikes like '²'
+        if not part or not part.isdecimal():
             return False
         # Reject leading zeros to avoid octal interpretation
         if len(part) > 1 and part[0] == "0":
@@ -128,7 +129,7 @@ def validate_host(value: str) -> Optional[str]:
 
 def validate_port(value: str) -> Optional[str]:
     """Validate a port number."""
-    if not value.isdigit():
+    if not value.isdecimal():
         return "Must be a number"
     port = int(value)
     # Port 0 is reserved; 65536+ overflows 16-bit field

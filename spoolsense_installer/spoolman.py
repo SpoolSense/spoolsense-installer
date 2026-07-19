@@ -26,20 +26,18 @@ EXTRA_FIELDS = [
     ("spool", "nfc_link", "text", "nfc_link"),
 ]
 
-# Happy Hare binding (middleware v1.7.3+): the middleware PATCHes these onto
-# spools at scan time, and Spoolman rejects writes to undeclared fields with
-# HTTP 400 — so they must exist before the first bind. mmu_gate MUST be
-# integer (the middleware writes the gate number).
-HAPPY_HARE_FIELDS = [
-    ("spool", "mmu_gate", "integer", "MMU Gate"),
-    ("spool", "printer_name", "text", "Printer Name"),
-]
-
 
 def fields_for_setup(setup_type):
-    """The Spoolman extra fields a given middleware setup type requires."""
-    if setup_type == "happy_hare":
-        return EXTRA_FIELDS + HAPPY_HARE_FIELDS
+    """The Spoolman extra fields a given middleware setup type requires.
+
+    Every setup currently needs exactly the base scanner fields. Happy Hare
+    used to add mmu_gate/printer_name here, but since middleware v1.8.6 the
+    bind goes through HH's own MMU_SPOOLMAN command and HH's mmu_server
+    declares its own fields (mmu_gate_map, printer_name) on startup — the
+    installer-created spool.mmu_gate was never read by any HH version.
+    Existing users' fields are left alone; we only stop creating them.
+    Kept as a hook for future mode-specific fields (e.g. INDX, #38).
+    """
     return EXTRA_FIELDS
 
 
@@ -86,7 +84,7 @@ def setup_extra_fields(spoolman_url: str, fields: list = None) -> list:
     """Create extra fields in Spoolman for tag data enrichment.
 
     ``fields`` defaults to the base EXTRA_FIELDS; pass fields_for_setup(...) to
-    include mode-specific fields (e.g. Happy Hare's mmu_gate/printer_name).
+    include mode-specific fields.
 
     Returns a list of ``(entity_type, key)`` tuples that could NOT be created.
     An empty list means every field exists or was created successfully. Nothing
@@ -140,7 +138,7 @@ def print_failed_fields_summary(spoolman_url: str, failed: list) -> None:
     if not failed:
         return
 
-    field_meta = {(e, k): (ft, dn) for e, k, ft, dn in EXTRA_FIELDS + HAPPY_HARE_FIELDS}
+    field_meta = {(e, k): (ft, dn) for e, k, ft, dn in EXTRA_FIELDS}
     print(f"\n{C.RED}{C.BOLD}{'═' * 42}")
     print(f"  ⚠  Spoolman fields NOT created")
     print(f"{'═' * 42}{C.RESET}")

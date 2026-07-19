@@ -61,6 +61,13 @@ class ValidatePortTest(unittest.TestCase):
         for port in ("0", "65536", "-1", "abc", ""):
             self.assertIsNotNone(validate_port(port), port)
 
+    def test_unicode_digit_lookalikes_rejected_not_crash(self):
+        """'²'.isdigit() is True but int('²') raises — validators must
+        re-prompt on such input, never traceback."""
+        self.assertIsNotNone(validate_port("²²"))
+        self.assertFalse(is_valid_ipv4("19².1.1.1"))
+        self.assertIsNotNone(validate_host("19².1.1.1"))
+
 
 class ValidateUrlTest(unittest.TestCase):
     def test_accepts_http_https_with_port_and_path(self):

@@ -12,7 +12,7 @@ the middleware (choose "Middleware only").
 Note: SpoolSense middleware must run on the printer host.
 """
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 
 import argparse
 import os
@@ -233,12 +233,18 @@ def print_completion_message(mode: str, scanner_config: dict, steps: list) -> No
 
 def run_setup_fields(spoolman_url: str, happy_hare: bool = False) -> int:
     """Re-run only Spoolman extra-field creation. Returns a process exit code."""
+    if happy_hare:
+        # Deprecated no-op kept so old invocations don't argparse-error:
+        # since middleware v1.8.6, Happy Hare's mmu_server declares its own
+        # Spoolman fields on startup — the installer no longer creates any.
+        print(f"\n  {C.YELLOW}Note:{C.RESET} --happy-hare is no longer needed — Happy Hare declares")
+        print("  its own Spoolman fields since middleware v1.8.6. Creating the")
+        print("  standard scanner fields only.")
     if not spoolman_url:
         spoolman_url = ask("Spoolman URL (e.g. http://localhost:7912)", validate=validate_url)
 
     print(f"\n{C.CYAN}── Spoolman Field Setup ───────────────{C.RESET}\n")
-    failed = setup_extra_fields(
-        spoolman_url, fields_for_setup("happy_hare" if happy_hare else ""))
+    failed = setup_extra_fields(spoolman_url, fields_for_setup(""))
     if failed:
         print_failed_fields_summary(spoolman_url, failed)
         return 1
@@ -264,7 +270,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument(
         "--happy-hare",
         action="store_true",
-        help="With --setup-fields: also create the Happy Hare fields (mmu_gate, printer_name).",
+        help="Deprecated no-op: Happy Hare declares its own Spoolman fields since middleware v1.8.6.",
     )
     parser.add_argument(
         "--dev",
@@ -350,13 +356,14 @@ def _main() -> None:
 
     setup_type = (middleware_config or {}).get("setup_type", "")
 
-    # Happy Hare binding writes spool extras — Spoolman is mandatory there.
-    # Check the enabled flag too: the middleware-only settings collector fills
-    # spoolman_url even when Spoolman was declined.
+    # Happy Hare requires Spoolman: spools are identified by their Spoolman ID
+    # when binding gates via HH's MMU_SPOOLMAN command. Check the enabled flag
+    # too: the middleware-only settings collector fills spoolman_url even when
+    # Spoolman was declined.
     if setup_type == "happy_hare" and not (scanner_config.get("spoolman_on")
                                            and scanner_config.get("spoolman_url")):
-        print(f"\n  {C.YELLOW}Happy Hare requires Spoolman{C.RESET} — the middleware binds spools")
-        print("  to MMU gates by writing Spoolman extra fields.\n")
+        print(f"\n  {C.YELLOW}Happy Hare requires Spoolman{C.RESET} — spools are identified by their")
+        print("  Spoolman ID when binding gates via MMU_SPOOLMAN.\n")
         scanner_config["spoolman_url"] = ask("Spoolman URL", default="http://spoolman.local:7912",
                                              validate=validate_url)
         scanner_config["spoolman_on"] = 1
