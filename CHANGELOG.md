@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.5.0] - Unreleased
+
+Happy Hare setups now target middleware v1.8.6+ (fresh installs get it automatically via the latest-release pin; the installer supports no older-version pinning for middleware, so this is a hard floor for HH setups).
+
+### Added
+- **Happy Hare mobile flow** (middleware v1.8.6) — the web panel/mobile question is now offered for HH setups; `mobile.action: happy_hare_stage` lets a phone scan assign a tag to any gate. When enabled, the installer prompts for the MMU gate count (1–32) and writes `happy_hare.num_gates` (mandatory for this mobile action). The physical select-then-scan flow still needs no gate count, so declining mobile skips the prompt. No explicit `toolheads:` list is ever written for HH — the middleware derives `G0..G{n-1}` itself.
+
+### Removed
+- **Dead Happy Hare Spoolman fields** — the installer no longer creates `spool.mmu_gate`/`spool.printer_name`: since v1.8.6 the middleware binds through Happy Hare's own `MMU_SPOOLMAN SPOOLID/GATE` command, and HH's `mmu_server` declares the fields it actually uses (`mmu_gate_map`, `printer_name`) on startup. The old direct-write `extra.mmu_gate` was never read by any Happy Hare version. Existing users' Spoolman fields are left untouched. `--setup-fields --happy-hare` is now a deprecated no-op.
+- **`happy_hare.printer_name` prompt and config key** — legacy as of v1.8.6 (tolerated but ignored; HH stamps its own printer identity during the bind). The HH block is now just `enabled` (+ optional `num_gates`).
+
+### Fixed
+- HH setup notes now reference the real gate-selection command `MMU_SELECT GATE=N` (`MMU_SELECT_GATE` never existed) and describe the binding as going through `MMU_SPOOLMAN`.
+
+---
+
 ## [1.4.0] - 2026-07-06
 
 ### Added

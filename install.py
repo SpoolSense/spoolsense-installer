@@ -12,7 +12,7 @@ the middleware (choose "Middleware only").
 Note: SpoolSense middleware must run on the printer host.
 """
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 
 import argparse
 import os
@@ -233,12 +233,18 @@ def print_completion_message(mode: str, scanner_config: dict, steps: list) -> No
 
 def run_setup_fields(spoolman_url: str, happy_hare: bool = False) -> int:
     """Re-run only Spoolman extra-field creation. Returns a process exit code."""
+    if happy_hare:
+        # Deprecated no-op kept so old invocations don't argparse-error:
+        # since middleware v1.8.6, Happy Hare's mmu_server declares its own
+        # Spoolman fields on startup — the installer no longer creates any.
+        print(f"\n  {C.YELLOW}Note:{C.RESET} --happy-hare is no longer needed — Happy Hare declares")
+        print("  its own Spoolman fields since middleware v1.8.6. Creating the")
+        print("  standard scanner fields only.")
     if not spoolman_url:
         spoolman_url = ask("Spoolman URL (e.g. http://localhost:7912)", validate=validate_url)
 
     print(f"\n{C.CYAN}── Spoolman Field Setup ───────────────{C.RESET}\n")
-    failed = setup_extra_fields(
-        spoolman_url, fields_for_setup("happy_hare" if happy_hare else ""))
+    failed = setup_extra_fields(spoolman_url, fields_for_setup(""))
     if failed:
         print_failed_fields_summary(spoolman_url, failed)
         return 1
@@ -264,7 +270,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument(
         "--happy-hare",
         action="store_true",
-        help="With --setup-fields: also create the Happy Hare fields (mmu_gate, printer_name).",
+        help="Deprecated no-op: Happy Hare declares its own Spoolman fields since middleware v1.8.6.",
     )
     parser.add_argument(
         "--dev",

@@ -145,17 +145,6 @@ def collect_scanner_config() -> Dict[str, Union[str, int]]:
     }
 
 
-# These values are interpolated into generated YAML (middleware.generate_config
-# uses f-strings, not a serializer) — reject anything that could break quoting.
-
-def validate_printer_name(value: str) -> Optional[str]:
-    if not value:
-        return "Cannot be empty"
-    if any(c in value for c in ('"', "\\")) or any(ord(c) < 32 for c in value):
-        return 'Cannot contain quotes, backslashes, or control characters'
-    return None
-
-
 def validate_toolhead_list(value: str) -> Optional[str]:
     names = [t.strip() for t in value.split(",")]
     if not names or any(not n for n in names):
@@ -184,18 +173,16 @@ def collect_middleware_config(low_spool_default: int = 100) -> Dict[str, Union[s
     })
 
     scanners: list[dict] = []
-    printer_name = ""
     toolheads: List[str] = []
     if setup_type == "happy_hare":
-        print(f"\n  {C.YELLOW}Note:{C.RESET} Happy Hare must run in {C.BOLD}pull mode{C.RESET} (spoolman_support: pull).")
-        print("  Workflow: select a gate (MMU_SELECT_GATE GATE=N), scan a tag,")
-        print("  and the middleware binds the spool to that gate in Spoolman.\n")
+        # Requires middleware >= 1.8.6 (binding via HH's MMU_SPOOLMAN command);
+        # fresh installs get it automatically via the latest-release pin.
+        print(f"\n  {C.YELLOW}Note:{C.RESET} Requires Happy Hare in {C.BOLD}pull mode{C.RESET} (spoolman_support: pull)")
+        print("  and SpoolSense middleware 1.8.6 or newer (installed automatically).")
+        print("  Workflow: select a gate (MMU_SELECT GATE=N), scan a tag, and the")
+        print("  middleware binds the spool via Happy Hare's MMU_SPOOLMAN command.\n")
         print(f"  {C.YELLOW}Note:{C.RESET} After flashing your scanner, find its device ID")
         print("  from the MQTT topic: spoolsense/<device_id>/tag/state\n")
-        # Written to each spool's extra.printer_name; Happy Hare uses it to
-        # identify this printer's spools when syncing from Spoolman.
-        printer_name = ask("Printer name (as Happy Hare knows it)",
-                           validate=validate_printer_name)
         scanners.append({"action": "happy_hare_stage"})
     elif setup_type == "afc_stage":
         print(f"\n  {C.YELLOW}Note:{C.RESET} After flashing your scanner, find its device ID")
@@ -237,14 +224,23 @@ def collect_middleware_config(low_spool_default: int = 100) -> Dict[str, Union[s
     low_spool_threshold = int(ask("Low-spool alert threshold (grams)",
                                   default=low_spool_default, validate=validate_grams))
 
-    # The middleware only accepts afc_stage/toolhead_stage/toolhead as the
-    # mobile action — there is no happy_hare mobile action, so don't offer
-    # the panel there (a generated fallback action would misroute HH scans).
-    mobile_enabled = False
-    if setup_type != "happy_hare":
-        print(f"\n  {C.YELLOW}Web config panel:{C.RESET} the middleware can serve a browser UI +")
-        print("  mobile REST API on port 5001 for editing config and mobile scans.\n")
-        mobile_enabled = ask_yesno("Enable the web config panel (port 5001)?", default=False)
+    print(f"\n  {C.YELLOW}Web config panel:{C.RESET} the middleware can serve a browser UI +")
+    print("  mobile REST API on port 5001 for editing config and mobile scans.")
+    if setup_type == "happy_hare":
+        print("  Mobile scans assign a tag to any MMU gate from your phone (v1.8.6+).")
+    print()
+    mobile_enabled = ask_yesno("Enable the web config panel (port 5001)?", default=False)
+
+    # The happy_hare_stage mobile action requires the gate count so the app
+    # can offer G0..G{n-1}; the middleware derives the gates itself. The
+    # physical select-then-scan flow works without it, so only ask when
+    # mobile is enabled.
+    num_gates = 0
+    if setup_type == "happy_hare" and mobile_enabled:
+        def validate_gates(value: str) -> Optional[str]:
+            return None if value.isdigit() and 1 <= int(value) <= 32 else "Must be 1-32"
+
+        num_gates = int(ask("Number of MMU gates", default=4, validate=validate_gates))
 
     publish_lane_data = False
     if setup_type == "afc_stage":
@@ -263,11 +259,11 @@ def collect_middleware_config(low_spool_default: int = 100) -> Dict[str, Union[s
     return {
         "setup_type": setup_type,
         "scanners": scanners,
-        "printer_name": printer_name,
         "toolheads": toolheads,
         "moonraker_url": moonraker_url,
         "low_spool_threshold": low_spool_threshold,
         "mobile_enabled": mobile_enabled,
+        "num_gates": num_gates,
         "publish_lane_data": publish_lane_data,
     }
 

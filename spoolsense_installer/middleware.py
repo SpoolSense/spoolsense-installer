@@ -58,18 +58,21 @@ def generate_config(scanner_config: dict, middleware_config: dict) -> str:
         "scanner_topic_prefix": "spoolsense",
     }
 
-    # Happy Hare pull-mode binding (middleware v1.7.3+): the middleware
-    # refuses to bind without enabled + printer_name.
+    # Happy Hare binding (middleware v1.8.6+): the middleware binds through
+    # HH's own MMU_SPOOLMAN SPOOLID/GATE command. printer_name is legacy —
+    # tolerated but ignored, HH stamps its own printer identity — so it is
+    # never written. num_gates is only needed for the mobile flow.
     if setup_type == "happy_hare":
-        cfg["happy_hare"] = {
-            "enabled": True,
-            "printer_name": middleware_config.get("printer_name", ""),
-        }
+        cfg["happy_hare"] = {"enabled": True}
+        if middleware_config.get("num_gates"):
+            cfg["happy_hare"]["num_gates"] = int(middleware_config["num_gates"])
 
     cfg["scanners"] = scanners_map
 
-    # Explicit toolheads list (issue #24) — the mobile app picker reads it
-    if toolheads:
+    # Explicit toolheads list (issue #24) — the mobile app picker reads it.
+    # Never for Happy Hare: the middleware derives gates G0..G{n-1} itself
+    # and rejects an explicit list for the happy_hare_stage mobile action.
+    if toolheads and setup_type != "happy_hare":
         cfg["toolheads"] = list(toolheads)
 
     # Web config panel / mobile REST API (middleware v1.7.0+, port 5001)
@@ -78,6 +81,10 @@ def generate_config(scanner_config: dict, middleware_config: dict) -> str:
             mobile = {"enabled": True, "action": "afc_stage"}
         elif setup_type == "toolhead_stage":
             mobile = {"enabled": True, "action": "toolhead_stage"}
+        elif setup_type == "happy_hare":
+            # v1.8.6+: phone scans assign a tag to any gate; requires
+            # happy_hare.num_gates and spoolman_url in this config
+            mobile = {"enabled": True, "action": "happy_hare_stage"}
         else:
             mobile = {"enabled": True, "action": "toolhead",
                       "toolhead": toolheads[0] if toolheads else "T0"}

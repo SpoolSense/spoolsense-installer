@@ -10,9 +10,9 @@ import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from spoolsense_installer.config import validate_printer_name, validate_toolhead_list
+from spoolsense_installer.config import validate_toolhead_list
 from spoolsense_installer.middleware import generate_config
-from spoolsense_installer.spoolman import EXTRA_FIELDS, HAPPY_HARE_FIELDS, fields_for_setup
+from spoolsense_installer.spoolman import EXTRA_FIELDS, fields_for_setup
 
 
 def scanner_cfg(**overrides):
@@ -31,21 +31,65 @@ def middleware_cfg(**overrides):
     return cfg
 
 
+def hh_cfg(**overrides):
+    return middleware_cfg(setup_type="happy_hare",
+                          scanners=[{"action": "happy_hare_stage"}], **overrides)
+
+
 class HappyHareConfigTest(unittest.TestCase):
-    def test_happy_hare_setup_writes_integration_block(self):
-        """Middleware v1.7.3 requires happy_hare.enabled + printer_name and a
-        happy_hare_stage scanner action (middleware #83)."""
-        parsed = yaml.safe_load(generate_config(scanner_cfg(), middleware_cfg(
-            setup_type="happy_hare",
-            scanners=[{"action": "happy_hare_stage"}],
-            printer_name="MyVoron",
-        )))
+    """Middleware v1.8.6: binding goes through HH's own MMU_SPOOLMAN command;
+    printer_name is legacy (tolerated but ignored) and must not be written."""
+
+    def test_happy_hare_block_is_enabled_only(self):
+        parsed = yaml.safe_load(generate_config(scanner_cfg(), hh_cfg()))
         self.assertEqual(parsed["scanners"]["YOUR_DEVICE_ID"]["action"], "happy_hare_stage")
-        self.assertEqual(parsed["happy_hare"], {"enabled": True, "printer_name": "MyVoron"})
+        self.assertEqual(parsed["happy_hare"], {"enabled": True})
+
+    def test_legacy_printer_name_never_written(self):
+        """Even if an old collected config carries printer_name, drop it."""
+        parsed = yaml.safe_load(generate_config(scanner_cfg(),
+                                                hh_cfg(printer_name="MyVoron")))
+        self.assertNotIn("printer_name", parsed["happy_hare"])
+
+    def test_num_gates_written_when_provided(self):
+        parsed = yaml.safe_load(generate_config(scanner_cfg(), hh_cfg(num_gates=8)))
+        self.assertEqual(parsed["happy_hare"]["num_gates"], 8)
+
+    def test_num_gates_absent_when_not_provided(self):
+        """Physical select-then-scan needs no num_gates — don't write one."""
+        parsed = yaml.safe_load(generate_config(scanner_cfg(), hh_cfg()))
+        self.assertNotIn("num_gates", parsed["happy_hare"])
 
     def test_non_happy_hare_setup_has_no_block(self):
         parsed = yaml.safe_load(generate_config(scanner_cfg(), middleware_cfg()))
         self.assertNotIn("happy_hare", parsed)
+
+
+class HappyHareMobileTest(unittest.TestCase):
+    """v1.8.6 adds mobile.action: happy_hare_stage — phone scans assign a tag
+    to any gate. Middleware requires num_gates + spoolman_url for this action
+    and derives gates itself, so NO explicit toolheads list may be written."""
+
+    def _parsed(self, **overrides):
+        return yaml.safe_load(generate_config(
+            scanner_cfg(), hh_cfg(mobile_enabled=True, num_gates=4, **overrides)))
+
+    def test_mobile_action_is_happy_hare_stage(self):
+        parsed = self._parsed()
+        self.assertEqual(parsed["mobile"]["action"], "happy_hare_stage")
+        self.assertTrue(parsed["mobile"]["enabled"])
+        self.assertEqual(parsed["mobile"]["port"], 5001)
+        # mobile.toolhead is meaningless for this action
+        self.assertNotIn("toolhead", parsed["mobile"])
+
+    def test_num_gates_present_with_mobile(self):
+        self.assertEqual(self._parsed()["happy_hare"]["num_gates"], 4)
+
+    def test_no_explicit_toolheads_list_for_hh(self):
+        """The middleware derives G0..G{n-1} itself; an explicit toolheads:
+        list is rejected for HH mobile — never write one, even defensively."""
+        parsed = self._parsed(toolheads=["G0", "G1"])
+        self.assertNotIn("toolheads", parsed)
 
 
 class ScannerFieldsV2Test(unittest.TestCase):
@@ -67,23 +111,17 @@ class ScannerFieldsV2Test(unittest.TestCase):
 
 
 class ExtraFieldsSelectionTest(unittest.TestCase):
-    def test_happy_hare_fields_have_correct_types(self):
-        """mmu_gate must be integer, printer_name text — Spoolman rejects
-        writes to undeclared/mistyped fields with HTTP 400."""
-        fields = {(e, k): t for e, k, t, _ in HAPPY_HARE_FIELDS}
-        self.assertEqual(fields[("spool", "mmu_gate")], "integer")
-        self.assertEqual(fields[("spool", "printer_name")], "text")
+    def test_happy_hare_adds_no_extra_fields(self):
+        """Since middleware v1.8.6 the bind goes through HH's MMU_SPOOLMAN
+        command and HH's mmu_server declares its own Spoolman fields
+        (mmu_gate_map, printer_name) on startup. The old installer-created
+        spool.mmu_gate was never read by any HH version — stop creating it.
+        (Existing users' fields are left alone; we only stop creating.)"""
+        self.assertEqual(fields_for_setup("happy_hare"), EXTRA_FIELDS)
 
-    def test_happy_hare_setup_includes_hh_fields(self):
-        fields = fields_for_setup("happy_hare")
-        for f in EXTRA_FIELDS + HAPPY_HARE_FIELDS:
-            self.assertIn(f, fields)
-
-    def test_other_setups_exclude_hh_fields(self):
-        fields = fields_for_setup("single")
-        for f in HAPPY_HARE_FIELDS:
-            self.assertNotIn(f, fields)
-        self.assertEqual(fields, EXTRA_FIELDS)
+    def test_all_setups_get_base_fields(self):
+        for setup in ("single", "toolchanger", "afc_stage", "happy_hare", ""):
+            self.assertEqual(fields_for_setup(setup), EXTRA_FIELDS, setup)
 
 
 class LowSpoolThresholdTest(unittest.TestCase):
@@ -113,14 +151,6 @@ class ToolheadStageToolheadsTest(unittest.TestCase):
 
 
 class YamlSafeValidatorsTest(unittest.TestCase):
-    """printer_name and toolhead names are spliced into generated YAML via
-    f-strings — quotes/backslashes would silently corrupt config.yaml."""
-
-    def test_printer_name_rejects_yaml_breaking_chars(self):
-        self.assertIsNone(validate_printer_name("MyVoron 2.4"))
-        for bad in ('My "Voron"', "back\\slash", "", "line\nbreak"):
-            self.assertIsNotNone(validate_printer_name(bad), repr(bad))
-
     def test_toolhead_list_allows_simple_names_only(self):
         self.assertIsNone(validate_toolhead_list("T0,T1"))
         self.assertIsNone(validate_toolhead_list("T0, extruder_1"))
