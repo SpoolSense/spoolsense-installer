@@ -18,6 +18,8 @@ BOARDS = {
     "esp32s3zero": ("ESP32-S3-Zero by Waveshare (4MB)", "esp32s3", "esp32s3zero", 4 * 1024 * 1024, 0x0),
     "esp32c3": ("ESP32-C3 SuperMini / DevKitM-1 (4MB)", "esp32c3", "esp32c3", 4 * 1024 * 1024, 0x0),
     "esp32s3devkitc": ("ESP32-S3-DevKitC-1-N16R8 (16MB+8MB PSRAM)", "esp32s3", "esp32s3devkitc", 16 * 1024 * 1024, 0x0),
+    "seeed_xiao_esp32c6": ("Seeed Studio XIAO ESP32-C6 (4MB)", "esp32c6", "seeed_xiao_esp32c6", 4 * 1024 * 1024, 0x0),
+    "esp32c6": ("ESP32-C6-DevKitC-1 (8MB)", "esp32c6", "esp32c6", 8 * 1024 * 1024, 0x0),
 }
 
 

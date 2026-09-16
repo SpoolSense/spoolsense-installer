@@ -78,6 +78,8 @@ After installation, open `http://spoolsense.local` in your browser to retrieve y
 | ESP32-S3-Zero (Waveshare) | 4MB | Tested |
 | ESP32-C3 SuperMini / DevKitM-1 | 4MB | Tested |
 | ESP32-S3-DevKitC-1-N16R8 | 16MB + 8MB PSRAM | Tested |
+| Seeed Studio XIAO ESP32-C6 | 4MB | Untested |
+| ESP32-C6-DevKitC-1 | 8MB | Untested |
 
 Other boards: compile from source via [PlatformIO](https://github.com/SpoolSense/spoolsense_scanner).
 
