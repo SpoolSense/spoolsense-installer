@@ -40,6 +40,20 @@ S3_DEVKITC_PSRAM_OUTPUT = (
 )
 
 
+# Real-world ESP32-C6 output. Both C6 boards share this chip line; only the
+# flash size distinguishes the 4MB XIAO from the 8MB DevKitC-1.
+C6_OUTPUT_4MB = (
+    "esptool v5.0\n"
+    "Chip is ESP32-C6 (QFN40) (revision v0.0)\n"
+    "Detected flash size: 4MB\n"
+)
+
+C6_OUTPUT_8MB = (
+    "esptool v5.0\n"
+    "Chip is ESP32-C6 (QFN40) (revision v0.0)\n"
+    "Detected flash size: 8MB\n"
+)
+
 class VerifyFlashTest(unittest.TestCase):
     """verify_flash must fail CLOSED: no flashing unless chip and size are confirmed."""
 
@@ -80,6 +94,22 @@ class VerifyFlashTest(unittest.TestCase):
         out = "Chip is ESP32-S3 (QFN56)\nDetected flash size: 4MB\n"
         with self.assertRaises(InstallerError):
             self._verify(completed(stdout=out), board_key="esp32s3devkitc")
+
+    def test_accepts_xiao_c6(self):
+        """Seeed XIAO ESP32-C6 is a 4MB C6 board (scanner env seeed_xiao_esp32c6)."""
+        self.assertTrue(self._verify(completed(stdout=C6_OUTPUT_4MB),
+                                     board_key="seeed_xiao_esp32c6"))
+
+    def test_accepts_c6_devkitc(self):
+        """ESP32-C6-DevKitC-1 is built against an 8MB partition table."""
+        self.assertTrue(self._verify(completed(stdout=C6_OUTPUT_8MB),
+                                     board_key="esp32c6"))
+
+    def test_c6_devkitc_rejects_4mb_board(self):
+        """Both C6 boards report the same chip line — only min_flash separates
+        them. A 4MB C6 cannot hold the DevKitC-1's 8MB partition table."""
+        with self.assertRaises(InstallerError):
+            self._verify(completed(stdout=C6_OUTPUT_4MB), board_key="esp32c6")
 
     def test_exits_cleanly_on_timeout(self):
         """A hung esptool must produce a friendly exit, not a traceback."""

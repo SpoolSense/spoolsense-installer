@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **ESP32-C6 board support** — `Seeed Studio XIAO ESP32-C6 (4MB)` and `ESP32-C6-DevKitC-1 (8MB)` are now selectable in the scanner board prompt. Scanner v1.11.1+ ships matching `seeed_xiao_esp32c6` and `esp32c6` firmware, bootloader, and partition assets. Bootloader offset `0x0` (newer-ROM behavior, same as the S3/C3 families); chip-family verification already recognized ESP32-C6. The two boards share a chip line, so the 8MB minimum on the DevKitC-1 is what stops its 8MB partition table being flashed to a 4MB C6. (#41)
+
+  ESP32-C5 is deliberately left out: the scanner's own `esp32c5` env is compile-proven but not yet hardware-validated, and `verify_flash` would need its chip-family pattern widened to accept `ESP32-C5`.
+
+---
+
 ## [1.5.0] - 2026-07-18
 
 Happy Hare setups now target middleware v1.8.6+ (fresh installs get it automatically via the latest-release pin; the installer supports no older-version pinning for middleware, so this is a hard floor for HH setups).
